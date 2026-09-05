@@ -39,7 +39,7 @@ Production worker on the netcup Dokploy instance.
 - Env: `WORKER_PORT=8080`, `WORKER_API_KEY`, `DATA_DIR=/data`, `RUST_LOG=info,vod_worker=debug`
 - Volume: `twitch-vod-worker-data` → `/data` (SQLite + temp jobs)
 - Health: `GET /health` (unauthenticated)
-- Twitch/S3 secrets: sync from the desktop app, not env
+- Optional `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` in env (same as `YOUTUBE_*` / `GDRIVE_*`). Twitch user tokens + S3/WebDAV still via Sync Settings.
 
 ---
 

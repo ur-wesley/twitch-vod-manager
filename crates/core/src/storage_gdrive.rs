@@ -37,14 +37,61 @@ struct GoogleTokenResponse {
     refresh_token: Option<String>,
 }
 
+// Default desktop client credentials for Google Drive integration
+pub const DEFAULT_GDRIVE_CLIENT_ID: &str = "841123498124-71t8l5m6qap157n8430b8s1a9k7d3e2v.apps.googleusercontent.com";
+pub const DEFAULT_GDRIVE_CLIENT_SECRET: &str = "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ec";
+
+pub fn resolve_gdrive_credentials(client_id: &str, client_secret: &str) -> (String, String) {
+    let env_nonempty = |key: &str| -> Option<String> {
+        std::env::var(key)
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    };
+
+    let cid = if !client_id.trim().is_empty() {
+        client_id.trim().to_string()
+    } else if let Some(id) = env_nonempty("GDRIVE_CLIENT_ID") {
+        id
+    } else if let Some(id) = env_nonempty("YOUTUBE_CLIENT_ID") {
+        id
+    } else {
+        DEFAULT_GDRIVE_CLIENT_ID.to_string()
+    };
+
+    let csec = if !client_secret.trim().is_empty() {
+        client_secret.trim().to_string()
+    } else if let Some(sec) = env_nonempty("GDRIVE_CLIENT_SECRET") {
+        sec
+    } else if let Some(sec) = env_nonempty("YOUTUBE_CLIENT_SECRET") {
+        sec
+    } else {
+        DEFAULT_GDRIVE_CLIENT_SECRET.to_string()
+    };
+
+    (cid, csec)
+}
+
 pub async fn start_gdrive_oauth(
     client_id: &str,
     client_secret: &str,
 ) -> Result<(String, Option<String>), AppError> {
+    let (effective_client_id, effective_client_secret) =
+        resolve_gdrive_credentials(client_id, client_secret);
+
     let redirect_uri = "http://localhost:17565/auth/callback";
+
+    if effective_client_id == DEFAULT_GDRIVE_CLIENT_ID
+        || effective_client_secret == DEFAULT_GDRIVE_CLIENT_SECRET
+    {
+        return Err(AppError::Auth(format!(
+            "Google Drive login needs a real Google OAuth client. Reuse your YouTube Client ID/Secret (same project) or set GDRIVE_*/YOUTUBE_* . Add redirect URI exactly `{redirect_uri}` (http, no trailing slash)."
+        )));
+    }
+
     let auth_url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth?client_id={}&redirect_uri={}&response_type=code&scope=https://www.googleapis.com/auth/drive.file&access_type=offline&prompt=consent",
-        client_id, redirect_uri
+        effective_client_id, redirect_uri
     );
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:17565").await.map_err(|e| {
@@ -53,25 +100,47 @@ pub async fn start_gdrive_oauth(
 
     let _ = open::that(&auth_url);
 
-    let (mut socket, _) = listener.accept().await.map_err(|e| {
-        AppError::Auth(format!("Failed to accept incoming Google Drive callback: {}", e))
-    })?;
+    let accept_future = async {
+        loop {
+            let (mut socket, _) = listener.accept().await?;
+            let mut buffer = [0u8; 4096];
+            let n = socket.read(&mut buffer).await?;
+            let request_str = String::from_utf8_lossy(&buffer[..n]);
+            let first_line = request_str.lines().next().unwrap_or_default();
 
-    let mut buffer = [0u8; 4096];
-    let n = socket.read(&mut buffer).await.map_err(|e| {
-        AppError::Auth(format!("Failed to read Google Drive callback: {}", e))
-    })?;
+            if first_line.contains("/auth/callback") {
+                if let Some(code) = extract_query_param(&request_str, "code") {
+                    let response = concat!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n",
+                        "<!DOCTYPE html><html><body style='font-family:sans-serif;background:#0d1117;color:#fff;display:flex;align-items:center;justify-content:center;height:90vh;'>",
+                        "<div style='text-align:center;'><h2>Google Drive Authorization Successful!</h2>",
+                        "<p>You can close this window and return to Twitch VOD Manager.</p></div></body></html>"
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.flush().await;
+                    return Ok(code);
+                } else if let Some(err) = extract_query_param(&request_str, "error") {
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<!DOCTYPE html><html><body style='font-family:sans-serif;background:#0d1117;color:#fff;display:flex;align-items:center;justify-content:center;height:90vh;'><div style='text-align:center;'><h2>Authorization Denied</h2><p>{}</p></div></body></html>",
+                        err
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.flush().await;
+                    return Err(AppError::Auth(format!("Google Drive authorization denied: {}", err)));
+                }
+            } else {
+                let not_found = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+                let _ = socket.write_all(not_found.as_bytes()).await;
+            }
+        }
+    };
 
-    let request_str = String::from_utf8_lossy(&buffer[..n]);
-    let code = extract_query_param(&request_str, "code").ok_or_else(|| {
-        AppError::Auth("Authorization code missing from Google callback URL".to_string())
-    })?;
+    let code = tokio::time::timeout(std::time::Duration::from_secs(180), accept_future)
+        .await
+        .map_err(|_| AppError::Auth("Google Drive OAuth timed out waiting for user approval".to_string()))?
+        .map_err(|e: AppError| e)?;
 
-    let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<!DOCTYPE html><html><body style='font-family:sans-serif;background:#0d1117;color:#fff;display:flex;align-items:center;justify-content:center;height:90vh;'><div style='text-align:center;'><h2>Google Drive Authorization Successful!</h2><p>You can close this window now.</p></div></body></html>";
-    let _ = socket.write_all(response.as_bytes()).await;
-    let _ = socket.flush().await;
-
-    exchange_gdrive_code(client_id, client_secret, &code, redirect_uri).await
+    exchange_gdrive_code(&effective_client_id, &effective_client_secret, &code, redirect_uri).await
 }
 
 fn extract_query_param(req: &str, param: &str) -> Option<String> {
@@ -123,10 +192,11 @@ pub async fn refresh_gdrive_token(
     client_secret: &str,
     refresh_token: &str,
 ) -> Result<String, AppError> {
+    let (cid, csec) = resolve_gdrive_credentials(client_id, client_secret);
     let client = reqwest::Client::new();
     let mut params = HashMap::new();
-    params.insert("client_id", client_id);
-    params.insert("client_secret", client_secret);
+    params.insert("client_id", cid.as_str());
+    params.insert("client_secret", csec.as_str());
     params.insert("refresh_token", refresh_token);
     params.insert("grant_type", "refresh_token");
 
@@ -411,6 +481,67 @@ pub async fn list_gdrive_vods(
     Ok(files)
 }
 
+fn parse_quota_u64(value: &serde_json::Value) -> Option<u64> {
+    value
+        .as_str()
+        .and_then(|s| s.parse().ok())
+        .or_else(|| value.as_u64())
+}
+
+pub fn parse_gdrive_quota_json(json: &serde_json::Value) -> Result<crate::StorageQuota, AppError> {
+    let quota = json.get("storageQuota").filter(|v| v.is_object()).ok_or_else(|| {
+        AppError::Drive("Missing storageQuota in Drive about response".into())
+    })?;
+
+    let used_bytes = parse_quota_u64(&quota["usage"]).unwrap_or(0);
+    let total_bytes = parse_quota_u64(&quota["limit"]).filter(|&n| n > 0);
+    let available_bytes = total_bytes.map(|total| total.saturating_sub(used_bytes));
+
+    Ok(crate::StorageQuota {
+        used_bytes,
+        total_bytes,
+        available_bytes,
+    })
+}
+
+pub async fn get_gdrive_quota(
+    client_id: &str,
+    client_secret: &str,
+    access_token: &str,
+    refresh_token: Option<&str>,
+) -> Result<crate::StorageQuota, AppError> {
+    let client = reqwest::Client::new();
+    let url = "https://www.googleapis.com/drive/v3/about?fields=storageQuota";
+    let mut token = access_token.to_string();
+    let mut res = client
+        .get(url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await?;
+
+    if res.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Some(rf) = refresh_token {
+            token = refresh_gdrive_token(client_id, client_secret, rf).await?;
+            res = client
+                .get(url)
+                .header("Authorization", format!("Bearer {}", token))
+                .send()
+                .await?;
+        }
+    }
+
+    if !res.status().is_success() {
+        let text = res.text().await.unwrap_or_default();
+        return Err(AppError::Drive(format!(
+            "Failed to query Google Drive quota: {}",
+            text
+        )));
+    }
+
+    let json: serde_json::Value = res.json().await?;
+    parse_gdrive_quota_json(&json)
+}
+
 pub async fn delete_gdrive_object(
     client_id: &str,
     client_secret: &str,
@@ -540,3 +671,57 @@ pub async fn download_gdrive_file(
     file.flush().await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_gdrive_quota_json;
+
+    #[test]
+    fn parses_string_quota_fields() {
+        let json = serde_json::json!({
+            "storageQuota": {
+                "limit": "15000000000",
+                "usage": "5000000000",
+                "usageInDrive": "4000000000"
+            }
+        });
+        let quota = parse_gdrive_quota_json(&json).unwrap();
+        assert_eq!(quota.used_bytes, 5_000_000_000);
+        assert_eq!(quota.total_bytes, Some(15_000_000_000));
+        assert_eq!(quota.available_bytes, Some(10_000_000_000));
+    }
+
+    #[test]
+    fn unlimited_when_limit_missing() {
+        let json = serde_json::json!({
+            "storageQuota": {
+                "usage": "123"
+            }
+        });
+        let quota = parse_gdrive_quota_json(&json).unwrap();
+        assert_eq!(quota.used_bytes, 123);
+        assert_eq!(quota.total_bytes, None);
+        assert_eq!(quota.available_bytes, None);
+    }
+
+    #[test]
+    fn unlimited_when_limit_zero() {
+        let json = serde_json::json!({
+            "storageQuota": {
+                "limit": "0",
+                "usage": "123"
+            }
+        });
+        let quota = parse_gdrive_quota_json(&json).unwrap();
+        assert_eq!(quota.used_bytes, 123);
+        assert_eq!(quota.total_bytes, None);
+        assert_eq!(quota.available_bytes, None);
+    }
+
+    #[test]
+    fn errors_without_storage_quota() {
+        let json = serde_json::json!({ "kind": "drive#about" });
+        assert!(parse_gdrive_quota_json(&json).is_err());
+    }
+}
+

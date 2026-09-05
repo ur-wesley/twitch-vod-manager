@@ -5,7 +5,7 @@ use tracing::{error, info};
 use uuid::Uuid;
 use vod_core::pipeline::PipelineConfig;
 use vod_core::storage_s3::S3Credentials;
-use vod_core::twitch::{get_app_access_token, get_vod_qualities, get_vods};
+use vod_core::twitch::{get_app_access_token, get_vod_qualities, get_vods, resolve_twitch_credentials};
 
 pub async fn run_autonomous_watcher(state: AppState) {
     info!("Starting autonomous Twitch channel watcher loop");
@@ -42,6 +42,25 @@ pub async fn check_channel_and_archive(state: &AppState) -> Result<usize, String
         return Ok(0);
     }
 
+    let max_storage_gb = crate::storage_quota::resolve_max_storage_gb(
+        state
+            .db
+            .get_config("max_storage_gb")
+            .ok()
+            .flatten()
+            .as_deref(),
+    );
+    let completed_dir = state.data_dir.join("completed");
+    if crate::storage_quota::is_over_quota(&completed_dir, max_storage_gb) {
+        let (_, used, _) =
+            crate::storage_quota::storage_quota_stats(&completed_dir, max_storage_gb);
+        info!(
+            "Autonomous watcher: storage quota full ({:.1} GB / {} GB) — skipping new archives",
+            used, max_storage_gb
+        );
+        return Ok(0);
+    }
+
     let client_id = state
         .db
         .get_config("twitch_client_id")
@@ -54,6 +73,7 @@ pub async fn check_channel_and_archive(state: &AppState) -> Result<usize, String
         .ok()
         .flatten()
         .unwrap_or_default();
+    let (client_id, client_secret) = resolve_twitch_credentials(&client_id, &client_secret);
     let user_id = state
         .db
         .get_config("twitch_user_id")
@@ -127,10 +147,12 @@ pub async fn check_channel_and_archive(state: &AppState) -> Result<usize, String
 
         let gdrive_cid = state.db.get_config("gdrive_client_id").ok().flatten().unwrap_or_default();
         let gdrive_cs = state.db.get_config("gdrive_client_secret").ok().flatten().unwrap_or_default();
+        let (gdrive_cid, gdrive_cs) =
+            vod_core::storage_gdrive::resolve_gdrive_credentials(&gdrive_cid, &gdrive_cs);
         let gdrive_tok = state.db.get_config("gdrive_access_token").ok().flatten().unwrap_or_default();
         let gdrive_rtok = state.db.get_config("gdrive_refresh_token").ok().flatten();
         let gdrive_fid = state.db.get_config("gdrive_folder_id").ok().flatten();
-        let has_gdrive = !gdrive_cid.is_empty() && (!gdrive_tok.is_empty() || gdrive_rtok.is_some());
+        let has_gdrive = !gdrive_tok.is_empty() || gdrive_rtok.is_some();
         let gdrive_config = if has_gdrive {
             Some(vod_core::storage_gdrive::GDriveCredentials {
                 client_id: gdrive_cid,

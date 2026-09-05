@@ -392,7 +392,7 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
           <Card class="bg-card/60 backdrop-blur-xs">
             <CardHeader class="pb-2">
               <CardTitle class="text-xs text-muted-foreground flex items-center justify-between">
-                <span>Disk & FFmpeg</span>
+                <span>Storage & FFmpeg</span>
                 <span class="i-mdi-harddisk size-4 text-primary" />
               </CardTitle>
             </CardHeader>
@@ -402,13 +402,17 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
                 fallback={<div class="text-xs text-muted-foreground">Connecting...</div>}
               >
                 <div class="text-sm font-bold text-foreground flex items-center justify-between">
-                  <span>{status()?.disk_free_gb} GB free</span>
+                  <span>
+                    {(status()?.storage_free_gb ?? 0).toFixed(1)} GB free of{" "}
+                    {status()?.storage_max_gb ?? 100} GB
+                  </span>
                   <span class="text-xs text-emerald-500 flex items-center gap-1 font-normal">
                     <span class="i-mdi-check-circle size-3.5" /> FFmpeg OK
                   </span>
                 </div>
                 <div class="text-[11px] text-muted-foreground pt-0.5">
-                  Total disk: {status()?.disk_total_gb} GB
+                  Used {(status()?.storage_used_gb ?? 0).toFixed(1)} GB configured • Host disk:{" "}
+                  {status()?.disk_free_gb} / {status()?.disk_total_gb} GB free
                 </div>
               </Show>
             </CardContent>
@@ -446,6 +450,39 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
             </CardContent>
           </Card>
         </div>
+
+        <Show when={status()}>
+          {(s) => (
+            <div class="flex flex-wrap items-center gap-2 px-0.5">
+              <span class="text-[11px] text-muted-foreground font-medium mr-1">Synced creds</span>
+              <For
+                each={() =>
+                  [
+                    { label: "Twitch", ok: s().has_twitch },
+                    { label: "S3", ok: s().has_s3 },
+                    { label: "GDrive", ok: s().has_gdrive },
+                    { label: "WebDAV", ok: s().has_webdav },
+                  ] as const
+                }
+              >
+                {(item) => (
+                  <span
+                    class={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                      item.ok
+                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                        : "border-border bg-muted/40 text-muted-foreground"
+                    }`}
+                  >
+                    <span
+                      class={`size-1.5 rounded-full ${item.ok ? "bg-emerald-500" : "bg-muted-foreground/50"}`}
+                    />
+                    {item.label}
+                  </span>
+                )}
+              </For>
+            </div>
+          )}
+        </Show>
 
         {/* Sync Action Banner */}
         <div class="p-3 rounded-lg border bg-muted/30 flex items-center justify-between">

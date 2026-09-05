@@ -13,4 +13,7 @@ services:
       - DATA_DIR=/data
       - RUST_LOG=info,vod_worker=debug
     volumes:
-      - ./data:/data
+      - twitch-vod-worker-data:/data
+
+volumes:
+  twitch-vod-worker-data:

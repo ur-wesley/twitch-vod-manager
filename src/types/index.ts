@@ -94,6 +94,7 @@ export interface AppSettings {
   worker_auto_sync?: boolean;
   auto_archive_enabled?: boolean;
   auto_archive_interval_mins?: number;
+  max_storage_gb?: number;
 }
 
 export interface S3Object {
@@ -145,6 +146,12 @@ export interface WebDavFile {
   last_modified: string;
 }
 
+export interface StorageQuota {
+  used_bytes: number;
+  total_bytes?: number | null;
+  available_bytes?: number | null;
+}
+
 export interface DriveTransferProgress {
   vod_id: string;
   provider: "gdrive" | "webdav" | string;
@@ -187,9 +194,16 @@ export interface WorkerStatus {
   memory_used_mb: number;
   disk_total_gb: number;
   disk_free_gb: number;
+  storage_max_gb: number;
+  storage_used_gb: number;
+  storage_free_gb: number;
   ffmpeg_available: boolean;
   active_jobs_count: number;
   auto_watcher_enabled: boolean;
+  has_twitch: boolean;
+  has_s3: boolean;
+  has_gdrive: boolean;
+  has_webdav: boolean;
 }
 
 export interface WorkerJob {
@@ -202,6 +216,9 @@ export interface WorkerJob {
   local_path?: string;
   s3_key?: string;
   youtube_video_id?: string;
+  gdrive_file_id?: string;
+  gdrive_view_url?: string;
+  webdav_path?: string;
   error?: string;
   created_at: string;
   updated_at: string;
@@ -222,6 +239,10 @@ export interface PipelineConfig {
   duration_secs?: number;
   save_local?: boolean;
   upload_to_s3?: boolean;
+  upload_to_gdrive?: boolean;
+  gdrive_folder_id?: string;
+  upload_to_webdav?: boolean;
+  webdav_folder?: string;
   upload_to_youtube?: boolean;
   youtube_metadata?: YouTubeVideoMetadata;
   delete_from_twitch_after?: boolean;

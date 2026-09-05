@@ -302,10 +302,12 @@ pub async fn run_archive_pipeline(
 
     // 6. Delete from Twitch if requested
     if config.delete_from_twitch_after {
-        if let (Some(ref client_id), Some(ref token)) =
-            (&config.twitch_client_id, &config.twitch_token)
-        {
-            if !client_id.is_empty() && !token.is_empty() {
+        if let Some(ref token) = config.twitch_token {
+            let (client_id, _) = crate::twitch::resolve_twitch_credentials(
+                config.twitch_client_id.as_deref().unwrap_or(""),
+                "",
+            );
+            if !token.is_empty() {
                 reporter.report_stage(
                     vod_id,
                     "cleaning",
@@ -316,7 +318,7 @@ pub async fn run_archive_pipeline(
                     &format!("Requesting deletion of VOD #{} from Twitch...", vod_id),
                 );
 
-                match crate::twitch::delete_vod(client_id, token, vod_id).await {
+                match crate::twitch::delete_vod(&client_id, token, vod_id).await {
                     Ok(()) => {
                         result.deleted_from_twitch = true;
                         reporter.report_log(

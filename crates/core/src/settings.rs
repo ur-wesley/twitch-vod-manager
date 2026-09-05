@@ -48,9 +48,15 @@ pub struct AppSettings {
     pub worker_auto_sync: Option<bool>,
     pub auto_archive_enabled: Option<bool>,
     pub auto_archive_interval_mins: Option<u32>,
+    #[serde(default = "default_max_storage_gb")]
+    pub max_storage_gb: Option<u32>,
 
     pub ffmpeg_path: Option<String>,
     pub auto_download_tools: Option<bool>,
+}
+
+fn default_max_storage_gb() -> Option<u32> {
+    Some(100)
 }
 
 impl Default for AppSettings {
@@ -96,6 +102,7 @@ impl Default for AppSettings {
             worker_auto_sync: Some(true),
             auto_archive_enabled: Some(false),
             auto_archive_interval_mins: Some(15),
+            max_storage_gb: Some(100),
             ffmpeg_path: None,
             auto_download_tools: Some(true),
         }

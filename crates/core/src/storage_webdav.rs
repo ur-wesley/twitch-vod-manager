@@ -228,6 +228,70 @@ pub async fn list_webdav_vods(
     parse_webdav_xml(&xml)
 }
 
+pub fn parse_webdav_quota_xml(xml: &str) -> Result<crate::StorageQuota, AppError> {
+    let used = extract_tag(xml, "quota-used-bytes")
+        .and_then(|s| s.parse::<u64>().ok());
+    let available_raw = extract_tag(xml, "quota-available-bytes")
+        .and_then(|s| s.parse::<i64>().ok());
+
+    let available_bytes = match available_raw {
+        Some(n) if n >= 0 => Some(n as u64),
+        _ => None,
+    };
+    if used.is_none() && available_bytes.is_none() {
+        return Err(AppError::WebDav(
+            "WebDAV server did not report quota".into(),
+        ));
+    }
+    let used_bytes = used.unwrap_or(0);
+    let total_bytes = match (used, available_bytes) {
+        (Some(u), Some(a)) => Some(u.saturating_add(a)),
+        (None, Some(a)) => Some(a),
+        _ => None,
+    };
+
+    Ok(crate::StorageQuota {
+        used_bytes,
+        total_bytes,
+        available_bytes,
+    })
+}
+
+pub async fn get_webdav_quota(
+    credentials: &WebDavCredentials,
+) -> Result<crate::StorageQuota, AppError> {
+    let client = reqwest::Client::new();
+    let url = build_webdav_url(&credentials.endpoint, credentials.folder.as_deref(), None);
+
+    let propfind_body = r#"<?xml version="1.0" encoding="utf-8" ?>
+<D:propfind xmlns:D="DAV:">
+  <D:prop>
+    <D:quota-available-bytes/>
+    <D:quota-used-bytes/>
+  </D:prop>
+</D:propfind>"#;
+
+    let res = client
+        .request(reqwest::Method::from_bytes(b"PROPFIND").unwrap(), &url)
+        .basic_auth(&credentials.username, Some(&credentials.password))
+        .header("Depth", "0")
+        .header("Content-Type", "application/xml; charset=utf-8")
+        .body(propfind_body)
+        .send()
+        .await?;
+
+    if !res.status().is_success() && res.status() != reqwest::StatusCode::MULTI_STATUS {
+        let text = res.text().await.unwrap_or_default();
+        return Err(AppError::WebDav(format!(
+            "Failed to query WebDAV quota: {}",
+            text
+        )));
+    }
+
+    let xml = res.text().await?;
+    parse_webdav_quota_xml(&xml)
+}
+
 fn parse_webdav_xml(xml: &str) -> Result<Vec<WebDavFile>, AppError> {
     let mut files = Vec::new();
     let mut start_pos = 0;
@@ -407,3 +471,59 @@ pub async fn download_webdav_file(
     file.flush().await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_webdav_quota_xml;
+
+    #[test]
+    fn parses_prefixed_quota_props() {
+        let xml = r#"<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:propstat>
+      <d:prop>
+        <d:quota-available-bytes>400000000000</d:quota-available-bytes>
+        <d:quota-used-bytes>100000000000</d:quota-used-bytes>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>"#;
+        let quota = parse_webdav_quota_xml(xml).unwrap();
+        assert_eq!(quota.used_bytes, 100_000_000_000);
+        assert_eq!(quota.available_bytes, Some(400_000_000_000));
+        assert_eq!(quota.total_bytes, Some(500_000_000_000));
+    }
+
+    #[test]
+    fn available_only_sets_used_zero() {
+        let xml = r#"<D:prop><D:quota-available-bytes>50</D:quota-available-bytes></D:prop>"#;
+        let quota = parse_webdav_quota_xml(xml).unwrap();
+        assert_eq!(quota.used_bytes, 0);
+        assert_eq!(quota.available_bytes, Some(50));
+        assert_eq!(quota.total_bytes, Some(50));
+    }
+
+    #[test]
+    fn missing_and_negative_available_are_unknown() {
+        let missing = parse_webdav_quota_xml("<d:prop><d:quota-used-bytes>10</d:quota-used-bytes></d:prop>").unwrap();
+        assert_eq!(missing.used_bytes, 10);
+        assert_eq!(missing.available_bytes, None);
+        assert_eq!(missing.total_bytes, None);
+
+        let negative = parse_webdav_quota_xml(
+            "<d:prop><d:quota-available-bytes>-3</d:quota-available-bytes><d:quota-used-bytes>10</d:quota-used-bytes></d:prop>",
+        )
+        .unwrap();
+        assert_eq!(negative.used_bytes, 10);
+        assert_eq!(negative.available_bytes, None);
+        assert_eq!(negative.total_bytes, None);
+    }
+
+    #[test]
+    fn errors_when_no_quota_props() {
+        let xml = r#"<d:multistatus xmlns:d="DAV:"><d:response><d:propstat><d:prop/></d:propstat></d:response></d:multistatus>"#;
+        assert!(parse_webdav_quota_xml(xml).is_err());
+    }
+}
+

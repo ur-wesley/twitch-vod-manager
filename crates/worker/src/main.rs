@@ -2,6 +2,7 @@ mod api;
 mod db;
 mod queue;
 mod state;
+mod storage_quota;
 mod watcher;
 
 use db::Database;
