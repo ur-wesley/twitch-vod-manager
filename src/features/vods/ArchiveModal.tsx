@@ -22,6 +22,8 @@ export interface ArchiveModalConfirmConfig {
   crf: number;
   saveLocal: boolean;
   uploadToS3: boolean;
+  uploadToGdrive?: boolean;
+  uploadToWebdav?: boolean;
   uploadToYouTube: boolean;
   youtubeMetadata?: YouTubeVideoMetadata;
   deleteFromTwitchAfter: boolean;
@@ -46,6 +48,8 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
 
   // Configurable Destinations
   const [uploadToS3, setUploadToS3] = createSignal(true);
+  const [uploadToGdrive, setUploadToGdrive] = createSignal(false);
+  const [uploadToWebdav, setUploadToWebdav] = createSignal(false);
   const [saveLocal, setSaveLocal] = createSignal(true);
   const [uploadToYouTube, setUploadToYouTube] = createSignal(false);
   const [deleteFromTwitch, setDeleteFromTwitch] = createSignal(false);
@@ -112,6 +116,8 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
       crf: crf(),
       saveLocal: saveLocal(),
       uploadToS3: uploadToS3(),
+      uploadToGdrive: uploadToGdrive(),
+      uploadToWebdav: uploadToWebdav(),
       uploadToYouTube: uploadToYouTube(),
       youtubeMetadata: ytMeta,
       deleteFromTwitchAfter: deleteFromTwitch(),
@@ -258,6 +264,34 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
               <span class="flex items-center gap-1.5">
                 <span class="i-mdi-cloud-upload text-primary size-4" />
                 Upload to Cloud Storage (S3 / Cloudflare R2 / Backblaze B2)
+              </span>
+            </label>
+
+            {/* Google Drive Storage */}
+            <label class="flex items-center gap-2 text-xs font-medium cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={uploadToGdrive()}
+                onChange={(e) => setUploadToGdrive(e.currentTarget.checked)}
+                class="rounded border-input text-primary focus:ring-primary size-4"
+              />
+              <span class="flex items-center gap-1.5">
+                <span class="i-mdi-google-drive text-amber-500 size-4" />
+                Upload to Google Drive
+              </span>
+            </label>
+
+            {/* WebDAV / Nextcloud / NAS */}
+            <label class="flex items-center gap-2 text-xs font-medium cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={uploadToWebdav()}
+                onChange={(e) => setUploadToWebdav(e.currentTarget.checked)}
+                class="rounded border-input text-primary focus:ring-primary size-4"
+              />
+              <span class="flex items-center gap-1.5">
+                <span class="i-mdi-folder-network text-blue-500 size-4" />
+                Upload to WebDAV / Nextcloud / NAS
               </span>
             </label>
 

@@ -8,6 +8,7 @@ import { formatBytes, formatEta, formatSpeed } from "~/lib/utils";
 import type {
   CompressionProgress,
   DownloadProgress,
+  DriveTransferProgress,
   S3TransferProgress,
 } from "~/types";
 
@@ -19,6 +20,7 @@ export interface PipelineMonitorProps {
   downloadProgress: DownloadProgress | null;
   compressionProgress: CompressionProgress | null;
   s3Progress: S3TransferProgress | null;
+  driveProgress?: DriveTransferProgress | null;
   onCancel: () => void;
 }
 
@@ -153,21 +155,24 @@ export const PipelineMonitor: Component<PipelineMonitorProps> = (props) => {
                     : "i-mdi-circle-outline size-4 text-muted-foreground"
                 }
               />
-              3. Cloud Archival (S3 / Cloudflare R2 / Backblaze B2)
+              3. Cloud Archival (S3 / Google Drive / WebDAV)
             </span>
-            <Show when={props.stage === "uploading" ? props.s3Progress : null}>
-              {(s3) => (
-                <span class="font-mono text-muted-foreground">
-                  {formatBytes(s3().bytes_transferred)} / {formatBytes(s3().total_bytes)} (
-                  {s3().percent.toFixed(1)}%) • {formatSpeed(s3().speed_mbps)}
-                </span>
-              )}
+            <Show when={props.stage === "uploading" ? (props.s3Progress || props.driveProgress) : null}>
+              {(prog) => {
+                const p = prog();
+                return (
+                  <span class="font-mono text-muted-foreground">
+                    {formatBytes(p.bytes_transferred)} / {formatBytes(p.total_bytes)} (
+                    {p.percent.toFixed(1)}%) • {formatSpeed(p.speed_mbps)}
+                  </span>
+                );
+              }}
             </Show>
           </div>
           <Progress
             value={
               props.stage === "uploading"
-                ? props.s3Progress?.percent || 0
+                ? (props.s3Progress?.percent ?? props.driveProgress?.percent ?? 0)
                 : props.stage === "completed"
                 ? 100
                 : 0

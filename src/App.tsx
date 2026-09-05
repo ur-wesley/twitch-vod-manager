@@ -1,7 +1,10 @@
 import { type Component, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { getVersion } from "@tauri-apps/api/app";
+import { isTauri } from "@tauri-apps/api/core";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { Toaster, toast } from "solid-sonner";
 import { Button } from "~/components/ui/button";
+import { UpdateDialog, getSkippedVersion } from "~/components/UpdateDialog";
 import { WindowTitleBar } from "~/components/WindowTitleBar";
 import { MissingToolsBanner } from "~/components/MissingToolsBanner";
 import { MissingToolsModal } from "~/components/MissingToolsModal";
@@ -16,39 +19,57 @@ import { VodCard } from "~/features/vods/VodCard";
 import { CloudWorkersView } from "~/features/workers/CloudWorkersView";
 import {
   cancelActiveTask,
+  checkForUpdates,
+  deleteGdriveVod,
   deleteS3Vod,
+  deleteWebdavVod,
   detectFfmpeg,
+  downloadGdriveVod,
   downloadS3Vod,
+  downloadWebdavVod,
   getSettings,
   getTwitchUser,
+  getGdriveQuota,
+  getWebdavQuota,
+  listGdriveVods,
   listS3Vods,
   listVods,
+  listWebdavVods,
   loginTwitch,
   onCompressionProgress,
   onDownloadProgress,
+  onDriveUploadProgress,
   onS3UploadProgress,
   saveSettings,
   startPipeline,
   workerDispatchJob,
 } from "~/services/tauri";
+import type { UpdateInfoDto } from "~/services/tauri";
 import type {
   AppSettings,
   CompressionProgress,
   DownloadProgress,
+  DriveTransferProgress,
   FfmpegInfo,
+  GoogleDriveFile,
   S3Object,
   S3TransferProgress,
+  StorageQuota,
   TwitchUser,
   TwitchVod,
+  WebDavFile,
 } from "~/types";
 
 export const App: Component = () => {
   const [activeTab, setActiveTab] = createSignal<"vods" | "cloud" | "workers" | "settings">("vods");
+  const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
   const [settings, setSettings] = createSignal<AppSettings | null>(null);
   const [ffmpegInfo, setFfmpegInfo] = createSignal<FfmpegInfo | null>(null);
   const [twitchUser, setTwitchUser] = createSignal<TwitchUser | null>(null);
   const [vods, setVods] = createSignal<TwitchVod[]>([]);
   const [s3Objects, setS3Objects] = createSignal<S3Object[]>([]);
+  const [gdriveFiles, setGdriveFiles] = createSignal<GoogleDriveFile[]>([]);
+  const [webdavFiles, setWebdavFiles] = createSignal<WebDavFile[]>([]);
   const [vodSearch, setVodSearch] = createSignal("");
   const [archiveFilter, setArchiveFilter] = createSignal<"all" | "archived" | "unarchived">("all");
 
@@ -56,6 +77,12 @@ export const App: Component = () => {
   const [loadingUser, setLoadingUser] = createSignal(false);
   const [loadingVods, setLoadingVods] = createSignal(false);
   const [loadingS3, setLoadingS3] = createSignal(false);
+  const [loadingGdrive, setLoadingGdrive] = createSignal(false);
+  const [loadingWebdav, setLoadingWebdav] = createSignal(false);
+  const [gdriveQuota, setGdriveQuota] = createSignal<StorageQuota | null>(null);
+  const [loadingGdriveQuota, setLoadingGdriveQuota] = createSignal(false);
+  const [webdavQuota, setWebdavQuota] = createSignal<StorageQuota | null>(null);
+  const [loadingWebdavQuota, setLoadingWebdavQuota] = createSignal(false);
 
   // Modals
   const [selectedVodForArchive, setSelectedVodForArchive] = createSignal<TwitchVod | null>(null);
@@ -72,6 +99,11 @@ export const App: Component = () => {
   const [downloadProgress, setDownloadProgress] = createSignal<DownloadProgress | null>(null);
   const [compressionProgress, setCompressionProgress] = createSignal<CompressionProgress | null>(null);
   const [s3Progress, setS3Progress] = createSignal<S3TransferProgress | null>(null);
+  const [driveProgress, setDriveProgress] = createSignal<DriveTransferProgress | null>(null);
+
+  const [appVersion, setAppVersion] = createSignal("v0.1.0");
+  const [updateInfo, setUpdateInfo] = createSignal<UpdateInfoDto | null>(null);
+  const [updateOpen, setUpdateOpen] = createSignal(false);
 
   onMount(() => {
     // 1. Load initial settings
@@ -84,6 +116,12 @@ export const App: Component = () => {
         if (s.s3_endpoint && s.s3_bucket) {
           refreshS3Objects();
         }
+        if (s.gdrive_access_token) {
+          refreshGdriveFiles();
+        }
+        if (s.webdav_endpoint) {
+          refreshWebdavFiles();
+        }
       },
       (err) => toast.error(`Failed to load settings: ${err.message}`)
     );
@@ -91,10 +129,26 @@ export const App: Component = () => {
     // 2. Check FFmpeg availability
     refreshFfmpegStatus();
 
+    if (isTauri()) {
+      getVersion().then((v) => setAppVersion(`v${v}`));
+    }
+
+    void (async () => {
+      if (!isTauri()) return;
+      const r = await checkForUpdates();
+      if (r.isOk() && r.value) {
+        if (getSkippedVersion() !== r.value.version) {
+          setUpdateInfo(r.value);
+          setUpdateOpen(true);
+        }
+      }
+    })();
+
     // 3. Register real-time progress listeners
     let unlistenDl: (() => void) | undefined;
     let unlistenCp: (() => void) | undefined;
     let unlistenS3: (() => void) | undefined;
+    let unlistenDrive: (() => void) | undefined;
 
     onDownloadProgress((p) => {
       setPipelineStage("downloading");
@@ -117,10 +171,23 @@ export const App: Component = () => {
       }
     }).then((un) => (unlistenS3 = un));
 
+    onDriveUploadProgress((p) => {
+      setPipelineStage("uploading");
+      setDriveProgress(p);
+      if (p.percent >= 100) {
+        setTimeout(() => {
+          setPipelineStage("completed");
+          if (p.provider === "gdrive") refreshGdriveFiles();
+          if (p.provider === "webdav") refreshWebdavFiles();
+        }, 1000);
+      }
+    }).then((un) => (unlistenDrive = un));
+
     onCleanup(() => {
       if (unlistenDl) unlistenDl();
       if (unlistenCp) unlistenCp();
       if (unlistenS3) unlistenS3();
+      if (unlistenDrive) unlistenDrive();
     });
   });
 
@@ -204,6 +271,78 @@ export const App: Component = () => {
     );
   };
 
+  const refreshGdriveQuota = () => {
+    if (!settings()?.gdrive_access_token) {
+      setGdriveQuota(null);
+      setLoadingGdriveQuota(false);
+      return;
+    }
+    setLoadingGdriveQuota(true);
+    getGdriveQuota().match(
+      (q) => {
+        if (!settings()?.gdrive_access_token) {
+          setGdriveQuota(null);
+          setLoadingGdriveQuota(false);
+          return;
+        }
+        setGdriveQuota(q);
+        setLoadingGdriveQuota(false);
+      },
+      () => {
+        setGdriveQuota(null);
+        setLoadingGdriveQuota(false);
+      }
+    );
+  };
+
+  const refreshWebdavQuota = () => {
+    if (!settings()?.webdav_endpoint) {
+      setWebdavQuota(null);
+      setLoadingWebdavQuota(false);
+      return;
+    }
+    setLoadingWebdavQuota(true);
+    getWebdavQuota().match(
+      (q) => {
+        if (!settings()?.webdav_endpoint) {
+          setWebdavQuota(null);
+          setLoadingWebdavQuota(false);
+          return;
+        }
+        setWebdavQuota(q);
+        setLoadingWebdavQuota(false);
+      },
+      () => {
+        setWebdavQuota(null);
+        setLoadingWebdavQuota(false);
+      }
+    );
+  };
+
+  const refreshGdriveFiles = () => {
+    setLoadingGdrive(true);
+    refreshGdriveQuota();
+    listGdriveVods().match(
+      (files) => {
+        setGdriveFiles(files);
+        setLoadingGdrive(false);
+      },
+      () => setLoadingGdrive(false)
+    );
+  };
+
+  const refreshWebdavFiles = () => {
+    setLoadingWebdav(true);
+    refreshWebdavQuota();
+    listWebdavVods().match(
+      (files) => {
+        setWebdavFiles(files);
+        setLoadingWebdav(false);
+      },
+      () => setLoadingWebdav(false)
+    );
+  };
+
   const handleSelectVodForArchive = (vod: TwitchVod) => {
     setSelectedVodForArchive(vod);
     setArchiveModalOpen(true);
@@ -235,6 +374,10 @@ export const App: Component = () => {
         durationSecs,
         saveLocal: config.saveLocal,
         uploadToS3: config.uploadToS3,
+        uploadToGdrive: config.uploadToGdrive,
+        gdriveFolderId: settings()?.gdrive_folder_id,
+        uploadToWebdav: config.uploadToWebdav,
+        webdavFolder: settings()?.webdav_folder,
         uploadToYouTube: config.uploadToYouTube,
         youtubeMetadata: config.youtubeMetadata,
         deleteFromTwitchAfter: config.deleteFromTwitchAfter,
@@ -267,6 +410,8 @@ export const App: Component = () => {
       durationSecs,
       saveLocal: config.saveLocal,
       uploadToS3: config.uploadToS3,
+      uploadToGdrive: config.uploadToGdrive,
+      uploadToWebdav: config.uploadToWebdav,
       uploadToYouTube: config.uploadToYouTube,
       youtubeMetadata: config.youtubeMetadata,
       deleteFromTwitchAfter: config.deleteFromTwitchAfter,
@@ -316,6 +461,60 @@ export const App: Component = () => {
         refreshS3Objects();
       },
       (err) => toast.error(`Delete failed: ${err.message}`)
+    );
+  };
+
+  const handleDownloadGdrive = async (file: GoogleDriveFile) => {
+    try {
+      const savePath = await saveDialog({
+        defaultPath: file.name,
+        filters: [{ name: "Video", extensions: ["mp4"] }],
+      });
+      if (savePath && typeof savePath === "string") {
+        downloadGdriveVod(file.id, file.id, savePath).match(
+          () => toast.success(`Downloading ${file.name} to ${savePath}`),
+          (err) => toast.error(`Google Drive download error: ${err.message}`)
+        );
+      }
+    } catch (e) {
+      toast.error(`Save dialog error: ${String(e)}`);
+    }
+  };
+
+  const handleDeleteGdrive = (fileId: string) => {
+    deleteGdriveVod(fileId).match(
+      () => {
+        toast.success("Deleted file from Google Drive");
+        refreshGdriveFiles();
+      },
+      (err) => toast.error(`Google Drive delete failed: ${err.message}`)
+    );
+  };
+
+  const handleDownloadWebdav = async (file: WebDavFile) => {
+    try {
+      const savePath = await saveDialog({
+        defaultPath: file.name,
+        filters: [{ name: "Video", extensions: ["mp4", "mkv", "ts"] }],
+      });
+      if (savePath && typeof savePath === "string") {
+        downloadWebdavVod(file.href, file.name, savePath).match(
+          () => toast.success(`Downloading ${file.name} to ${savePath}`),
+          (err) => toast.error(`WebDAV download error: ${err.message}`)
+        );
+      }
+    } catch (e) {
+      toast.error(`Save dialog error: ${String(e)}`);
+    }
+  };
+
+  const handleDeleteWebdav = (href: string) => {
+    deleteWebdavVod(href).match(
+      () => {
+        toast.success("Deleted file from WebDAV");
+        refreshWebdavFiles();
+      },
+      (err) => toast.error(`WebDAV delete failed: ${err.message}`)
     );
   };
 
@@ -372,41 +571,59 @@ export const App: Component = () => {
   return (
     <div class="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground select-none font-sans">
       <Toaster position="bottom-right" richColors />
+      <UpdateDialog
+        open={updateOpen()}
+        onOpenChange={setUpdateOpen}
+        updateInfo={updateInfo()}
+      />
 
-      {/* Top Window Titlebar matching project-vault */}
-      <WindowTitleBar title="Twitch VOD Manager" version="v0.1.0" />
+      <WindowTitleBar
+        title="Twitch VOD Manager"
+        sidebarCollapsed={sidebarCollapsed()}
+        onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
+      />
 
       <div class="flex flex-1 overflow-hidden">
-        {/* Left Navigation Sidebar matching project-vault */}
-        <aside class="flex w-60 shrink-0 flex-col justify-between border-r border-border/60 bg-sidebar text-sidebar-foreground">
-          <div class="flex flex-col gap-4 p-4">
-            {/* Sidebar Brand Header */}
-            <div class="flex items-center gap-3 px-1 py-1">
-              <div class="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-                <span class="iconify mdi--video-vintage size-5" />
+        <aside
+          class={`flex shrink-0 flex-col justify-between border-r border-border/60 bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-out overflow-hidden ${
+            sidebarCollapsed() ? "w-14" : "w-60"
+          }`}
+        >
+          <div class={`flex flex-col gap-4 ${sidebarCollapsed() ? "p-2" : "p-4"}`}>
+            <Show when={!sidebarCollapsed()}>
+              <div class="flex items-center gap-3 px-1 py-1">
+                <div class="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+                  <span class="iconify mdi--video-vintage size-5" />
+                </div>
+                <div class="flex flex-col leading-tight">
+                  <span class="text-xs font-bold text-foreground font-heading">Twitch VOD Manager</span>
+                  <span class="text-[10px] text-muted-foreground">Archiver & Cloud Manager</span>
+                </div>
               </div>
-              <div class="flex flex-col leading-tight">
-                <span class="text-xs font-bold text-foreground font-heading">Twitch VOD Manager</span>
-                <span class="text-[10px] text-muted-foreground">Archiver & Cloud Manager</span>
-              </div>
-            </div>
+            </Show>
 
-            {/* Sidebar Navigation Items */}
-            <nav class="flex flex-col gap-1 pt-2">
+            <nav class={`flex flex-col gap-1 ${sidebarCollapsed() ? "" : "pt-2"}`}>
               <button
                 type="button"
                 onClick={() => setActiveTab("vods")}
-                class={`flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
+                title="VODs"
+                aria-label="VODs"
+                aria-current={activeTab() === "vods" ? "page" : undefined}
+                class={`flex items-center rounded-lg text-xs font-semibold transition-all ${
+                  sidebarCollapsed() ? "justify-center px-2 py-2.5" : "justify-between px-3 py-2"
+                } ${
                   activeTab() === "vods"
                     ? "bg-sidebar-accent text-sidebar-foreground font-bold shadow-xs"
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                 }`}
               >
-                <div class="flex items-center gap-2.5">
+                <div class={`flex items-center ${sidebarCollapsed() ? "" : "gap-2.5"}`}>
                   <span class="iconify mdi--twitch size-4 text-[#9146FF]" />
-                  <span>Broadcast Archives</span>
+                  <Show when={!sidebarCollapsed()}>
+                    <span>VODs</span>
+                  </Show>
                 </div>
-                <Show when={vods().length > 0}>
+                <Show when={!sidebarCollapsed() && vods().length > 0}>
                   <span class="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
                     {vods().length}
                   </span>
@@ -415,63 +632,75 @@ export const App: Component = () => {
 
               <button
                 type="button"
+                title="Cloud"
+                aria-label="Cloud"
+                aria-current={activeTab() === "cloud" ? "page" : undefined}
                 onClick={() => {
                   setActiveTab("cloud");
                   refreshS3Objects();
+                  if (settings()?.gdrive_access_token) refreshGdriveFiles();
+                  if (settings()?.webdav_endpoint) refreshWebdavFiles();
                 }}
-                class={`flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
+                class={`flex items-center rounded-lg text-xs font-semibold transition-all ${
+                  sidebarCollapsed() ? "justify-center px-2 py-2.5" : "justify-between px-3 py-2"
+                } ${
                   activeTab() === "cloud"
                     ? "bg-sidebar-accent text-sidebar-foreground font-bold shadow-xs"
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                 }`}
               >
-                <div class="flex items-center gap-2.5">
+                <div class={`flex items-center ${sidebarCollapsed() ? "" : "gap-2.5"}`}>
                   <span class="iconify mdi--cloud-outline size-4 text-sky-400" />
-                  <span>S3 Cloud Library</span>
+                  <Show when={!sidebarCollapsed()}>
+                    <span>Cloud</span>
+                  </Show>
                 </div>
-                <Show when={s3Objects().length > 0}>
+                <Show
+                  when={
+                    !sidebarCollapsed() &&
+                    s3Objects().length + gdriveFiles().length + webdavFiles().length > 0
+                  }
+                >
                   <span class="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
-                    {s3Objects().length}
+                    {s3Objects().length + gdriveFiles().length + webdavFiles().length}
                   </span>
                 </Show>
               </button>
 
               <button
                 type="button"
+                title="Workers"
+                aria-label="Workers"
+                aria-current={activeTab() === "workers" ? "page" : undefined}
                 onClick={() => setActiveTab("workers")}
-                class={`flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
+                class={`flex items-center rounded-lg text-xs font-semibold transition-all relative ${
+                  sidebarCollapsed() ? "justify-center px-2 py-2.5" : "justify-between px-3 py-2"
+                } ${
                   activeTab() === "workers"
                     ? "bg-sidebar-accent text-sidebar-foreground font-bold shadow-xs"
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                 }`}
               >
-                <div class="flex items-center gap-2.5">
+                <div class={`flex items-center ${sidebarCollapsed() ? "" : "gap-2.5"}`}>
                   <span class="iconify mdi--server-network size-4 text-emerald-400" />
-                  <span>Cloud Workers (VPS)</span>
+                  <Show when={!sidebarCollapsed()}>
+                    <span>Workers</span>
+                  </Show>
                 </div>
                 <Show when={settings()?.worker_url}>
-                  <span class="size-2 rounded-full bg-emerald-400" title="Worker configured" />
+                  <span
+                    class={`rounded-full bg-emerald-400 ${
+                      sidebarCollapsed()
+                        ? "absolute top-1.5 right-1.5 size-1.5"
+                        : "size-2"
+                    }`}
+                    title="Worker configured"
+                  />
                 </Show>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("settings")}
-                class={`flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
-                  activeTab() === "settings"
-                    ? "bg-sidebar-accent text-sidebar-foreground font-bold shadow-xs"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                }`}
-              >
-                <div class="flex items-center gap-2.5">
-                  <span class="iconify mdi--cog-outline size-4 text-foreground/80" />
-                  <span>Settings & TOML</span>
-                </div>
               </button>
             </nav>
 
-            {/* Active Pipeline Status Pill in Sidebar */}
-            <Show when={pipelineStage() !== "idle"}>
+            <Show when={!sidebarCollapsed() && pipelineStage() !== "idle"}>
               <div class="rounded-xl border border-primary/30 bg-primary/10 p-3 space-y-1.5 animate-pulse">
                 <div class="flex items-center justify-between text-[11px] font-bold text-primary">
                   <span class="flex items-center gap-1.5">
@@ -485,42 +714,82 @@ export const App: Component = () => {
                 </p>
               </div>
             </Show>
+            <Show when={sidebarCollapsed() && pipelineStage() !== "idle"}>
+              <div
+                class="mx-auto size-2 rounded-full bg-primary animate-pulse"
+                title={`Processing: ${pipelineStage()}`}
+              />
+            </Show>
           </div>
 
-          {/* Sidebar Footer */}
-          <div class="flex flex-col gap-2.5 p-3 border-t border-sidebar-border">
-            {/* Tool Health Status Pill */}
+          <div
+            class={`flex flex-col gap-1 border-t border-sidebar-border ${
+              sidebarCollapsed() ? "p-2" : "p-3"
+            }`}
+          >
             <button
               type="button"
-              onClick={() => {
-                if (!ffmpegInfo()?.available) {
-                  setMissingToolsModalOpen(true);
-                } else {
-                  setActiveTab("settings");
-                }
-              }}
-              class="flex items-center justify-between rounded-lg border border-border/40 bg-muted/20 px-2.5 py-1.5 text-[11px] hover:bg-muted/40 transition-colors"
+              title="Settings"
+              aria-label="Settings"
+              aria-current={activeTab() === "settings" ? "page" : undefined}
+              onClick={() => setActiveTab("settings")}
+              class={`flex items-center rounded-lg text-xs font-semibold transition-all ${
+                sidebarCollapsed() ? "justify-center px-2 py-2.5" : "w-full gap-2.5 px-3 py-2"
+              } ${
+                activeTab() === "settings"
+                  ? "bg-sidebar-accent text-sidebar-foreground font-bold shadow-xs"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+              }`}
             >
-              <div class="flex items-center gap-2 truncate">
-                <span
-                  class={`size-2 rounded-full shrink-0 ${
-                    ffmpegInfo()?.available ? "bg-emerald-400" : "bg-amber-400 animate-pulse"
-                  }`}
-                />
-                <span class="font-medium text-foreground/80 truncate">
-                  {ffmpegInfo()?.available ? "FFmpeg Ready" : "FFmpeg Missing"}
-                </span>
-              </div>
-              <span class="iconify mdi--chevron-right size-3 text-muted-foreground" />
+              <span class="iconify mdi--cog-outline size-4 text-foreground/80" />
+              <Show when={!sidebarCollapsed()}>
+                <span>Settings</span>
+              </Show>
             </button>
 
-            {/* User Profile widget matching project-vault */}
-            <UserProfile
-              user={twitchUser()}
-              loading={loadingUser()}
-              onLogin={handleLoginTwitch}
-              onLogout={handleLogoutTwitch}
-            />
+            <Show
+              when={!sidebarCollapsed()}
+              fallback={
+                <Show
+                  when={twitchUser()}
+                  fallback={
+                    <button
+                      type="button"
+                      title="Login with Twitch"
+                      aria-label={loadingUser() ? "Connecting to Twitch" : "Login with Twitch"}
+                      onClick={handleLoginTwitch}
+                      disabled={loadingUser()}
+                      class="flex items-center justify-center rounded-lg px-2 py-2.5 text-[#9146FF] hover:bg-sidebar-accent/50 transition-colors"
+                    >
+                      <span class="iconify mdi--twitch size-4" />
+                    </button>
+                  }
+                >
+                  {(user) => (
+                    <button
+                      type="button"
+                      title={`Logout ${user().display_name}`}
+                      aria-label={`Logout ${user().display_name}`}
+                      onClick={handleLogoutTwitch}
+                      class="mx-auto overflow-hidden rounded-full border border-primary/30"
+                    >
+                      <img
+                        src={user().profile_image_url}
+                        alt={user().display_name}
+                        class="size-8 object-cover"
+                      />
+                    </button>
+                  )}
+                </Show>
+              }
+            >
+              <UserProfile
+                user={twitchUser()}
+                loading={loadingUser()}
+                onLogin={handleLoginTwitch}
+                onLogout={handleLogoutTwitch}
+              />
+            </Show>
           </div>
         </aside>
 
@@ -545,6 +814,7 @@ export const App: Component = () => {
                   downloadProgress={downloadProgress()}
                   compressionProgress={compressionProgress()}
                   s3Progress={s3Progress()}
+                  driveProgress={driveProgress()}
                   onCancel={handleCancelPipeline}
                 />
               </Show>
@@ -552,7 +822,7 @@ export const App: Component = () => {
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h2 class="text-lg font-bold tracking-tight text-foreground font-heading">
-                    Recent Broadcast Archives
+                    VODs
                   </h2>
                   <p class="text-xs text-muted-foreground">
                     Download, compress, and preserve past Twitch broadcasts before they expire.
@@ -693,16 +963,35 @@ export const App: Component = () => {
             </div>
           </Show>
 
-          {/* Tab 2: S3 Cloud Library */}
+          {/* Tab 2: Cloud & Drive Library */}
           <Show when={activeTab() === "cloud"}>
             <div class="flex-1 overflow-y-auto p-6 space-y-6">
               <CloudLibrary
+                s3Configured={!!(settings()?.s3_endpoint && settings()?.s3_bucket)}
+                gdriveConfigured={!!settings()?.gdrive_access_token}
+                webdavConfigured={!!settings()?.webdav_endpoint}
                 objects={s3Objects()}
                 loading={loadingS3()}
                 onRefresh={refreshS3Objects}
                 onDownload={handleDownloadS3Vod}
                 onPublishYouTube={handleOpenYouTubeModal}
                 onDelete={handleDeleteS3Vod}
+                gdriveFiles={gdriveFiles()}
+                loadingGdrive={loadingGdrive()}
+                onRefreshGdrive={refreshGdriveFiles}
+                onDownloadGdrive={handleDownloadGdrive}
+                onPublishYouTubeGdrive={(f) => handleOpenYouTubeModal(f.name)}
+                onDeleteGdrive={handleDeleteGdrive}
+                webdavFiles={webdavFiles()}
+                loadingWebdav={loadingWebdav()}
+                onRefreshWebdav={refreshWebdavFiles}
+                onDownloadWebdav={handleDownloadWebdav}
+                onPublishYouTubeWebdav={(f) => handleOpenYouTubeModal(f.name)}
+                onDeleteWebdav={handleDeleteWebdav}
+                gdriveQuota={gdriveQuota()}
+                loadingGdriveQuota={loadingGdriveQuota()}
+                webdavQuota={webdavQuota()}
+                loadingWebdavQuota={loadingWebdavQuota()}
               />
             </div>
           </Show>
@@ -722,10 +1011,20 @@ export const App: Component = () => {
             <SettingsView
               settings={settings()!}
               ffmpegInfo={ffmpegInfo()}
+              twitchUser={twitchUser()}
+              version={appVersion()}
               onOpenDownloader={() => setMissingToolsModalOpen(true)}
               onSettingsSaved={(s) => {
                 setSettings(s);
                 refreshFfmpegStatus();
+                if (s.twitch_access_token) {
+                  refreshTwitchUser();
+                } else {
+                  setTwitchUser(null);
+                  setVods([]);
+                }
+                refreshGdriveQuota();
+                refreshWebdavQuota();
               }}
             />
           </Show>

@@ -1,10 +1,11 @@
-import { type Component, createSignal, onCleanup, onMount } from "solid-js";
+import { type Component, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
 
 export interface WindowTitleBarProps {
   title?: string;
-  version?: string;
+  sidebarCollapsed?: boolean;
+  onToggleSidebar?: () => void;
 }
 
 export const WindowTitleBar: Component<WindowTitleBarProps> = (props) => {
@@ -46,23 +47,39 @@ export const WindowTitleBar: Component<WindowTitleBarProps> = (props) => {
       data-tauri-drag-region
       class="flex h-9 select-none items-center justify-between border-b border-border/60 bg-sidebar px-3 text-sidebar-foreground z-50 shrink-0"
     >
-      {/* App brand & title */}
-      <div data-tauri-drag-region class="flex items-center gap-2.5 pointer-events-none">
-        <div class="flex items-center justify-center size-5 rounded bg-primary/20 text-primary">
-          <span class="iconify mdi--video-vintage text-xs" />
+      <div class="flex items-center gap-2">
+        <Show when={props.onToggleSidebar}>
+          <button
+            type="button"
+            data-tauri-drag-region="false"
+            onClick={() => props.onToggleSidebar?.()}
+            class="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
+            title={props.sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+            aria-label={props.sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+            aria-expanded={!props.sidebarCollapsed}
+          >
+            <span
+              class={
+                props.sidebarCollapsed
+                  ? "iconify mdi--menu size-4"
+                  : "iconify mdi--menu-open size-4"
+              }
+            />
+          </button>
+        </Show>
+
+        <div data-tauri-drag-region class="flex items-center gap-2.5">
+          <div class="pointer-events-none flex items-center justify-center size-5 rounded bg-primary/20 text-primary">
+            <span class="iconify mdi--video-vintage text-xs" />
+          </div>
+          <span class="pointer-events-none text-xs font-bold tracking-tight text-foreground/90 font-heading">
+            {props.title || "Twitch VOD Manager"}
+          </span>
         </div>
-        <span class="text-xs font-bold tracking-tight text-foreground/90 font-heading">
-          {props.title || "Twitch VOD Manager"}
-        </span>
-        <span class="rounded bg-primary/10 px-1.5 py-0.2 text-[10px] font-bold text-primary font-mono">
-          {props.version || "v0.1.0"}
-        </span>
       </div>
 
-      {/* Center drag spacer */}
       <div data-tauri-drag-region class="flex-1 h-full" />
 
-      {/* Windows window controls */}
       <div class="flex h-full items-center -mr-3" data-tauri-drag-region="false">
         <button
           type="button"

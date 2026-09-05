@@ -38,12 +38,14 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
   const [progress, setProgress] = createSignal<YouTubeUploadProgress | null>(null);
   const [completedVideoId, setCompletedVideoId] = createSignal<string | null>(null);
   const [errorMsg, setErrorMsg] = createSignal("");
+  const [connecting, setConnecting] = createSignal(false);
 
   createEffect(() => {
     if (props.isOpen) {
       setTitle(`[VOD] ${props.vodTitle}`);
       setDescription(`Stream broadcast archive.\nOriginally streamed on Twitch.\n\n#Twitch #VOD`);
       setUploading(false);
+      setConnecting(false);
       setProgress(null);
       setCompletedVideoId(null);
       setErrorMsg("");
@@ -65,8 +67,12 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
     return () => unlisten?.();
   });
 
-  const handleConnect = () => {
-    loginYouTube().match(
+  const handleConnect = async () => {
+    setConnecting(true);
+    setErrorMsg("");
+    const res = await loginYouTube();
+    setConnecting(false);
+    res.match(
       () => props.onYouTubeConnected(),
       (err) => setErrorMsg(err.message)
     );
@@ -132,11 +138,12 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
               <Button
                 variant="default"
                 size="sm"
+                disabled={connecting()}
                 onClick={handleConnect}
-                class="bg-red-600 hover:bg-red-700 text-white gap-2"
+                class="bg-red-600 hover:bg-red-700 text-white gap-2 cursor-pointer"
               >
-                <span class="i-mdi-google size-4" />
-                Connect YouTube Account
+                <span class={`i-mdi-${connecting() ? "loading animate-spin" : "google"} size-4`} />
+                {connecting() ? "Opening Browser..." : "Connect YouTube Account"}
               </Button>
               <Show when={errorMsg()}>
                 <p class="text-xs text-destructive">{errorMsg()}</p>

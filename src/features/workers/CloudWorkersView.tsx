@@ -451,48 +451,37 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
           </Card>
         </div>
 
-        <Show when={status()}>
-          {(s) => (
-            <div class="flex flex-wrap items-center gap-2 px-0.5">
-              <span class="text-[11px] text-muted-foreground font-medium mr-1">Synced creds</span>
-              <For
-                each={() =>
-                  [
-                    { label: "Twitch", ok: s().has_twitch },
-                    { label: "S3", ok: s().has_s3 },
-                    { label: "GDrive", ok: s().has_gdrive },
-                    { label: "WebDAV", ok: s().has_webdav },
-                  ] as const
-                }
-              >
-                {(item) => (
-                  <span
-                    class={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${
-                      item.ok
-                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
-                        : "border-border bg-muted/40 text-muted-foreground"
-                    }`}
-                  >
-                    <span
-                      class={`size-1.5 rounded-full ${item.ok ? "bg-emerald-500" : "bg-muted-foreground/50"}`}
-                    />
-                    {item.label}
-                  </span>
-                )}
-              </For>
-            </div>
-          )}
-        </Show>
-
         {/* Sync Action Banner */}
-        <div class="p-3 rounded-lg border bg-muted/30 flex items-center justify-between">
-          <div class="flex items-center gap-2.5">
-            <span class="i-mdi-cloud-sync text-primary size-5" />
-            <div class="text-xs">
-              <span class="font-semibold text-foreground">Sync Credentials: </span>
-              <span class="text-muted-foreground">
-                Push your Twitch tokens and S3 bucket credentials from this computer to the VPS worker.
-              </span>
+        <div class="p-3 rounded-lg border bg-muted/30 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span class="i-mdi-cloud-sync text-primary size-5 shrink-0" />
+            <div class="text-xs min-w-0 space-y-1.5">
+              <div>
+                <span class="font-semibold text-foreground">Sync Credentials: </span>
+                <span class="text-muted-foreground">
+                  Push your Twitch tokens and S3 bucket credentials from this computer to the VPS worker.
+                </span>
+              </div>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mr-0.5">
+                  On worker
+                </span>
+                <Badge variant={status()?.has_twitch ? "success" : "outline"} class="text-[10px] px-1.5 py-0">
+                  Twitch {status()?.has_twitch ? "ready" : "missing"}
+                </Badge>
+                <Badge variant={status()?.has_s3 ? "success" : "outline"} class="text-[10px] px-1.5 py-0">
+                  S3 {status()?.has_s3 ? "ready" : "missing"}
+                </Badge>
+                <Badge variant={status()?.has_gdrive ? "success" : "outline"} class="text-[10px] px-1.5 py-0">
+                  GDrive {status()?.has_gdrive ? "ready" : "missing"}
+                </Badge>
+                <Badge variant={status()?.has_webdav ? "success" : "outline"} class="text-[10px] px-1.5 py-0">
+                  WebDAV {status()?.has_webdav ? "ready" : "missing"}
+                </Badge>
+                <Show when={!status() && isOnline() === false && !loadingStatus()}>
+                  <span class="text-[10px] text-muted-foreground">Connect to see live state</span>
+                </Show>
+              </div>
             </div>
           </div>
           <Button
@@ -500,7 +489,7 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
             size="sm"
             onClick={handleSyncSettings}
             disabled={syncing() || !isOnline()}
-            class="gap-1.5 text-xs h-7"
+            class="gap-1.5 text-xs h-7 shrink-0"
           >
             <span class={`i-mdi-sync size-3.5 ${syncing() ? "animate-spin" : ""}`} />
             {syncing() ? "Syncing..." : "Sync Settings to VPS"}

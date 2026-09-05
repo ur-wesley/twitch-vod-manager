@@ -5,14 +5,18 @@ import type {
   AppSettings,
   CompressionProgress,
   DownloadProgress,
+  DriveTransferProgress,
   FfmpegInfo,
+  GoogleDriveFile,
   S3Object,
   S3TransferProgress,
   StableError,
+  StorageQuota,
   ToolDownloadProgress,
   TwitchUser,
   TwitchVod,
   VodQuality,
+  WebDavFile,
   WorkerJob,
   WorkerJobLog,
   WorkerStatus,
@@ -54,6 +58,12 @@ export const exportSettingsToml = (): ResultAsync<string, StableError> =>
 export const loginTwitch = (): ResultAsync<TwitchUser, StableError> =>
   tauriInvoke<TwitchUser>("login_twitch");
 
+export const logoutTwitch = (): ResultAsync<void, StableError> =>
+  tauriInvoke<void>("logout_twitch");
+
+export const setTwitchToken = (token: string): ResultAsync<TwitchUser, StableError> =>
+  tauriInvoke<TwitchUser>("set_twitch_token", { token });
+
 export const getTwitchUser = (): ResultAsync<TwitchUser, StableError> =>
   tauriInvoke<TwitchUser>("get_twitch_user");
 
@@ -82,6 +92,8 @@ export interface StartPipelineArgs {
   durationSecs?: number;
   saveLocal?: boolean;
   uploadToS3?: boolean;
+  uploadToGdrive?: boolean;
+  uploadToWebdav?: boolean;
   uploadToYouTube?: boolean;
   youtubeMetadata?: YouTubeVideoMetadata;
   deleteFromTwitchAfter?: boolean;
@@ -96,6 +108,8 @@ export const startPipeline = (args: StartPipelineArgs): ResultAsync<string, Stab
     durationSecs: args.durationSecs,
     saveLocal: args.saveLocal ?? true,
     uploadToS3: args.uploadToS3 ?? true,
+    uploadToGdrive: args.uploadToGdrive ?? false,
+    uploadToWebdav: args.uploadToWebdav ?? false,
     uploadToYouTube: args.uploadToYouTube ?? false,
     youtubeMetadata: args.youtubeMetadata,
     deleteFromTwitchAfter: args.deleteFromTwitchAfter ?? false,
@@ -117,9 +131,55 @@ export const downloadS3Vod = (
 export const deleteS3Vod = (objectKey: string): ResultAsync<void, StableError> =>
   tauriInvoke<void>("delete_s3_vod", { objectKey });
 
+// Google Drive Storage
+export const loginGdrive = (): ResultAsync<boolean, StableError> =>
+  tauriInvoke<boolean>("login_gdrive");
+
+export const logoutGdrive = (): ResultAsync<boolean, StableError> =>
+  tauriInvoke<boolean>("logout_gdrive");
+
+export const listGdriveVods = (): ResultAsync<GoogleDriveFile[], StableError> =>
+  tauriInvoke<GoogleDriveFile[]>("list_gdrive_vods");
+
+export const getGdriveQuota = (): ResultAsync<StorageQuota, StableError> =>
+  tauriInvoke<StorageQuota>("get_gdrive_quota");
+
+export const downloadGdriveVod = (
+  fileId: string,
+  vodId: string,
+  destinationPath: string
+): ResultAsync<void, StableError> =>
+  tauriInvoke<void>("download_gdrive_vod", { fileId, vodId, destinationPath });
+
+export const deleteGdriveVod = (fileId: string): ResultAsync<void, StableError> =>
+  tauriInvoke<void>("delete_gdrive_vod", { fileId });
+
+// WebDAV Storage
+export const listWebdavVods = (): ResultAsync<WebDavFile[], StableError> =>
+  tauriInvoke<WebDavFile[]>("list_webdav_vods");
+
+export const getWebdavQuota = (): ResultAsync<StorageQuota, StableError> =>
+  tauriInvoke<StorageQuota>("get_webdav_quota");
+
+export const downloadWebdavVod = (
+  filenameOrHref: string,
+  vodId: string,
+  destinationPath: string
+): ResultAsync<void, StableError> =>
+  tauriInvoke<void>("download_webdav_vod", { filenameOrHref, vodId, destinationPath });
+
+export const deleteWebdavVod = (filenameOrHref: string): ResultAsync<void, StableError> =>
+  tauriInvoke<void>("delete_webdav_vod", { filenameOrHref });
+
 // YouTube
 export const loginYouTube = (): ResultAsync<boolean, StableError> =>
   tauriInvoke<boolean>("login_youtube");
+
+export const logoutYouTube = (): ResultAsync<void, StableError> =>
+  tauriInvoke<void>("logout_youtube");
+
+export const setYouTubeToken = (token: string): ResultAsync<void, StableError> =>
+  tauriInvoke<void>("set_youtube_token", { token });
 
 export const publishToYouTube = (
   vodId: string,
@@ -158,6 +218,10 @@ export interface WorkerDispatchJobArgs {
   durationSecs?: number;
   saveLocal?: boolean;
   uploadToS3?: boolean;
+  uploadToGdrive?: boolean;
+  gdriveFolderId?: string;
+  uploadToWebdav?: boolean;
+  webdavFolder?: string;
   uploadToYouTube?: boolean;
   youtubeMetadata?: YouTubeVideoMetadata;
   deleteFromTwitchAfter?: boolean;
@@ -177,6 +241,10 @@ export const workerDispatchJob = (
     durationSecs: args.durationSecs,
     saveLocal: args.saveLocal,
     uploadToS3: args.uploadToS3,
+    uploadToGdrive: args.uploadToGdrive,
+    gdriveFolderId: args.gdriveFolderId,
+    uploadToWebdav: args.uploadToWebdav,
+    webdavFolder: args.webdavFolder,
     uploadToYouTube: args.uploadToYouTube,
     youtubeMetadata: args.youtubeMetadata,
     deleteFromTwitchAfter: args.deleteFromTwitchAfter,
@@ -266,6 +334,14 @@ export const onYouTubeUploadProgress = (
   });
 };
 
+export const onDriveUploadProgress = (
+  callback: (progress: DriveTransferProgress) => void
+): Promise<UnlistenFn> => {
+  return listen<DriveTransferProgress>("drive-upload-progress", (event) => {
+    callback(event.payload);
+  });
+};
+
 export const onToolDownloadProgress = (
   callback: (progress: ToolDownloadProgress) => void
 ): Promise<UnlistenFn> => {
@@ -288,3 +364,15 @@ export const onWorkerDownloadProgress = (
     callback(event.payload);
   });
 };
+
+export type UpdateInfoDto = {
+  version: string;
+  currentVersion: string;
+  notes: string;
+};
+
+export const checkForUpdates = (): ResultAsync<UpdateInfoDto | null, StableError> =>
+  tauriInvoke<UpdateInfoDto | null>("check_for_updates");
+
+export const installUpdate = (): ResultAsync<void, StableError> =>
+  tauriInvoke<void>("install_update");
