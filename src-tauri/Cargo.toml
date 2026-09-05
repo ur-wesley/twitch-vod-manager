@@ -1,6 +1,6 @@
 [package]
 name = "twitch-vod-manager"
-version = "0.2.0"
+version = "0.2.1"
 description = "Desktop Twitch VOD Downloader, Compressor and Cloud/YouTube Manager"
 authors = ["Wesley"]
 edition = "2021"
