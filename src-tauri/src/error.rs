@@ -1,0 +1,109 @@
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StableError {
+    pub code: String,
+    pub message: String,
+}
+
+impl StableError {
+    pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for StableError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}]: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for StableError {}
+
+#[derive(Error, Debug)]
+pub enum AppError {
+    #[error("Network error: {0}")]
+    Network(#[from] reqwest::Error),
+
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Serialization error: {0}")]
+    Json(#[from] serde_json::Error),
+
+    #[error("Twitch API error: {0}")]
+    Twitch(String),
+
+    #[error("Authentication error: {0}")]
+    Auth(String),
+
+    #[error("Download error: {0}")]
+    Download(String),
+
+    #[error("Compression error: {0}")]
+    Compression(String),
+
+    #[error("Storage S3 error: {0}")]
+    Storage(String),
+
+    #[error("YouTube upload error: {0}")]
+    YouTube(String),
+
+    #[error("TOML error: {0}")]
+    Toml(#[from] toml::de::Error),
+
+    #[error("Configuration error: {0}")]
+    Config(String),
+
+    #[error("Cancelled")]
+    Cancelled,
+}
+
+impl From<AppError> for StableError {
+    fn from(err: AppError) -> Self {
+        match err {
+            AppError::Network(e) => StableError::new("NETWORK_ERROR", e.to_string()),
+            AppError::Io(e) => StableError::new("IO_ERROR", e.to_string()),
+            AppError::Json(e) => StableError::new("SERIALIZATION_ERROR", e.to_string()),
+            AppError::Toml(e) => StableError::new("TOML_ERROR", e.to_string()),
+            AppError::Config(msg) => StableError::new("CONFIG_ERROR", msg),
+            AppError::Twitch(msg) => StableError::new("TWITCH_ERROR", msg),
+            AppError::Auth(msg) => StableError::new("AUTH_ERROR", msg),
+            AppError::Download(msg) => StableError::new("DOWNLOAD_ERROR", msg),
+            AppError::Compression(msg) => StableError::new("COMPRESSION_ERROR", msg),
+            AppError::Storage(msg) => StableError::new("STORAGE_ERROR", msg),
+            AppError::YouTube(msg) => StableError::new("YOUTUBE_ERROR", msg),
+            AppError::Cancelled => StableError::new("CANCELLED", "Operation was cancelled"),
+        }
+    }
+}
+
+impl From<reqwest::Error> for StableError {
+    fn from(err: reqwest::Error) -> Self {
+        AppError::from(err).into()
+    }
+}
+
+impl From<std::io::Error> for StableError {
+    fn from(err: std::io::Error) -> Self {
+        AppError::from(err).into()
+    }
+}
+
+impl From<vod_core::AppError> for StableError {
+    fn from(err: vod_core::AppError) -> Self {
+        vod_core::StableError::from(err).into()
+    }
+}
+
+impl From<vod_core::StableError> for StableError {
+    fn from(err: vod_core::StableError) -> Self {
+        StableError::new(err.code, err.message)
+    }
+}
+
+

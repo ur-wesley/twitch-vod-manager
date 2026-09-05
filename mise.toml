@@ -1,0 +1,7 @@
+[tools]
+bun = "latest"
+rust = "1.96.0"
+
+[tasks]
+build-app = { run = "bun run tauri build" }
+

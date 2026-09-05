@@ -1,0 +1,60 @@
+{
+  "name": "twitch-vod-manager",
+  "version": "0.1.0",
+  "description": "Desktop Twitch VOD Downloader, Compressor & S3/YouTube Manager",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview",
+    "test": "vitest run",
+    "tauri": "tauri",
+    "lint": "oxlint src",
+    "format": "oxfmt .",
+    "typecheck": "tsc --noEmit",
+    "release": "bumpp",
+    "release:patch": "bumpp patch",
+    "release:minor": "bumpp minor",
+    "release:major": "bumpp major"
+  },
+  "dependencies": {
+    "@kobalte/core": "^0.13.13",
+    "@solid-primitives/event-bus": "^1.1.4",
+    "@solid-primitives/i18n": "^2.2.1",
+    "@solid-primitives/keyboard": "^1.3.7",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "~2.7.3",
+    "@tauri-apps/plugin-fs": "~2.5.2",
+    "@tauri-apps/plugin-notification": "~2.3.3",
+    "@tauri-apps/plugin-opener": "^2.5.5",
+    "@tauri-apps/plugin-store": "~2.4.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "solid-js": "^1.9.15",
+    "solid-sonner": "^0.3.2",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@iconify-json/mdi": "^1.2.3",
+    "@iconify/tailwind4": "^1.2.3",
+    "@tauri-apps/cli": "^2.11.4",
+    "@types/node": "^26.4.1",
+    "autoprefixer": "^10.5.5",
+    "bumpp": "^10.4.1",
+    "oxfmt": "^0.61.0",
+    "oxlint": "^1.81.0",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^4.3.3",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "~7.0.2",
+    "vite": "^8.2.2",
+    "vite-plugin-solid": "^2.11.14",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "packageManager": "bun@1.3.14"
+}

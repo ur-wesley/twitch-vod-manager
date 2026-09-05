@@ -1,0 +1,13 @@
+*
+!Cargo.toml
+!Cargo.lock
+!crates
+!crates/core
+!crates/core/**
+!crates/worker
+!crates/worker/**
+!src-tauri
+!src-tauri/Cargo.toml
+crates/worker/data
+crates/worker/data/**
+**/.env
