@@ -38,3 +38,6 @@ bun.lockb
 *.sln
 *.sw?
 .DS_Store
+
+*.key
+*.key.pub
