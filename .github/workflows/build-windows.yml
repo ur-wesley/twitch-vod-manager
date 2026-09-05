@@ -1,0 +1,74 @@
+# Secrets: see ../SECRETS.md
+# Required for updater: TAURI_SIGNING_PRIVATE_KEY (+ PASSWORD if set)
+# OAuth is runtime / built-in defaults — not GHA secrets
+name: Build App
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Generate Changelog
+        id: changelog
+        shell: bash
+        run: |
+          CURRENT_TAG="${{ github.ref_name }}"
+          PREV_TAG=$(git for-each-ref --sort=-creatordate --format '%(refname:short)' refs/tags | sed -n '2p')
+
+          if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "$CURRENT_TAG" ]; then
+            bunx changelogen@latest --no-commit --no-tag --from "$PREV_TAG" > CHANGELOG_RAW.txt
+          else
+            bunx changelogen@latest --no-commit --no-tag > CHANGELOG_RAW.txt
+          fi
+
+          sed -n '/^## /,$p' CHANGELOG_RAW.txt > CHANGELOG_BODY.md
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          cat CHANGELOG_BODY.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Install frontend dependencies
+        run: bun install
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '.'
+          shared-key: tauri-release-windows
+          cache-targets: true
+          cache-all-crates: true
+          save-if: true
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'Twitch VOD Manager v__VERSION__'
+          releaseBody: ${{ steps.changelog.outputs.body }}
+          releaseDraft: false
+          prerelease: false
