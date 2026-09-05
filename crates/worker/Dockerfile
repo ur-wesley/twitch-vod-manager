@@ -18,7 +18,9 @@ RUN mkdir -p crates/core/src crates/worker/src src-tauri/src \
 
 COPY crates/core ./crates/core
 COPY crates/worker ./crates/worker
-RUN cargo build --release --bin vod-worker
+RUN rm -f target/release/vod-worker \
+    && find crates/core crates/worker -name "*.rs" -exec touch {} + \
+    && cargo build --release --bin vod-worker
 
 FROM debian:bookworm-slim
 
