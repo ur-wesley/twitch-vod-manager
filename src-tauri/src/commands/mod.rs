@@ -17,6 +17,9 @@ use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use tauri::{AppHandle, State};
 
+mod updater;
+pub use updater::*;
+
 #[tauri::command]
 pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, StableError> {
     Ok(state.settings.read().await.clone())
@@ -44,20 +47,65 @@ pub async fn login_twitch(
         (s.twitch_client_id.clone(), s.twitch_client_secret.clone())
     };
 
-    if client_id.is_empty() || client_secret.is_empty() {
-        return Err(StableError::new(
-            "CONFIG_ERROR",
-            "Twitch Client ID and Client Secret must be configured in Settings",
-        ));
-    }
+    let (effective_client_id, effective_client_secret) =
+        vod_core::twitch::resolve_twitch_credentials(&client_id, &client_secret);
 
     let (access_token, refresh_token) =
-        start_oauth_flow(&client_id, &client_secret).await?;
-    let user = get_user_info(&client_id, &access_token).await?;
+        start_oauth_flow(&effective_client_id, &effective_client_secret).await?;
+    let user = get_user_info(&effective_client_id, &access_token).await?;
 
     let mut settings = state.settings.read().await.clone();
     settings.twitch_access_token = Some(access_token);
     settings.twitch_refresh_token = refresh_token;
+    settings.twitch_user_id = Some(user.id.clone());
+    settings.twitch_username = Some(user.login.clone());
+
+    let path = get_config_path(&app)?;
+    save_settings_impl(&path, &settings)?;
+    *state.settings.write().await = settings;
+
+    Ok(user)
+}
+
+#[tauri::command]
+pub async fn logout_twitch(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), StableError> {
+    let mut settings = state.settings.read().await.clone();
+    settings.twitch_access_token = None;
+    settings.twitch_refresh_token = None;
+    settings.twitch_user_id = None;
+    settings.twitch_username = None;
+
+    let path = get_config_path(&app)?;
+    save_settings_impl(&path, &settings)?;
+    *state.settings.write().await = settings;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_twitch_token(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    token: String,
+) -> Result<TwitchUser, StableError> {
+    let token = token.trim().to_string();
+    if token.is_empty() {
+        return Err(StableError::new("AUTH_ERROR", "Token cannot be empty"));
+    }
+
+    let client_id = {
+        let s = state.settings.read().await;
+        let (cid, _) = vod_core::twitch::resolve_twitch_credentials(&s.twitch_client_id, "");
+        cid
+    };
+
+    let user = get_user_info(&client_id, &token).await?;
+    let mut settings = state.settings.read().await.clone();
+    settings.twitch_access_token = Some(token);
+    settings.twitch_refresh_token = None;
     settings.twitch_user_id = Some(user.id.clone());
     settings.twitch_username = Some(user.login.clone());
 
@@ -77,12 +125,14 @@ pub async fn get_twitch_user(state: State<'_, AppState>) -> Result<TwitchUser, S
             s.twitch_access_token.clone().unwrap_or_default(),
         )
     };
-    if client_id.is_empty() || token.is_empty() {
+    if token.is_empty() {
         return Err(StableError::new(
             "AUTH_ERROR",
             "Not authenticated with Twitch",
         ));
     }
+    let (client_id, _) =
+        vod_core::twitch::resolve_twitch_credentials(&client_id, "");
     get_user_info(&client_id, &token).await.map_err(Into::into)
 }
 
@@ -96,12 +146,14 @@ pub async fn list_vods(state: State<'_, AppState>) -> Result<Vec<TwitchVod>, Sta
             s.twitch_user_id.clone().unwrap_or_default(),
         )
     };
-    if client_id.is_empty() || token.is_empty() || user_id.is_empty() {
+    if token.is_empty() || user_id.is_empty() {
         return Err(StableError::new(
             "AUTH_ERROR",
             "Please login to Twitch first",
         ));
     }
+    let (client_id, _) =
+        vod_core::twitch::resolve_twitch_credentials(&client_id, "");
     get_vods(&client_id, &token, &user_id)
         .await
         .map_err(Into::into)
@@ -272,6 +324,9 @@ pub async fn start_pipeline(
         )
     };
 
+    let (twitch_cid, _) =
+        vod_core::twitch::resolve_twitch_credentials(&twitch_cid, "");
+
     let do_upload_s3 = upload_to_s3.unwrap_or(true);
     let s3_config = if do_upload_s3 && !s3_ep.is_empty() && !s3_bkt.is_empty() {
         Some(vod_core::storage_s3::S3Credentials {
@@ -286,7 +341,9 @@ pub async fn start_pipeline(
     };
 
     let do_upload_gdrive = upload_to_gdrive.unwrap_or(false);
-    let gdrive_config = if do_upload_gdrive && !gdrive_cid.is_empty() {
+    let (gdrive_cid, gdrive_cs) =
+        vod_core::storage_gdrive::resolve_gdrive_credentials(&gdrive_cid, &gdrive_cs);
+    let gdrive_config = if do_upload_gdrive && (!gdrive_tok.is_empty() || gdrive_rtok.is_some()) {
         Some(vod_core::storage_gdrive::GDriveCredentials {
             client_id: gdrive_cid,
             client_secret: gdrive_cs,
@@ -438,23 +495,39 @@ pub async fn login_gdrive(
 ) -> Result<bool, StableError> {
     let (client_id, client_secret) = {
         let s = state.settings.read().await;
-        (
-            s.gdrive_client_id.clone().unwrap_or_default(),
-            s.gdrive_client_secret.clone().unwrap_or_default(),
-        )
+        let gd_id = s.gdrive_client_id.clone().unwrap_or_default();
+        let gd_sec = s.gdrive_client_secret.clone().unwrap_or_default();
+        if !gd_id.trim().is_empty() {
+            (gd_id, gd_sec)
+        } else {
+            (
+                s.youtube_client_id.clone().unwrap_or_default(),
+                s.youtube_client_secret.clone().unwrap_or_default(),
+            )
+        }
     };
-    if client_id.is_empty() || client_secret.is_empty() {
-        return Err(StableError::new(
-            "CONFIG_ERROR",
-            "Google Drive Client ID and Client Secret must be set in Settings",
-        ));
-    }
 
     let (access_token, refresh_token) =
         vod_core::storage_gdrive::start_gdrive_oauth(&client_id, &client_secret).await?;
     let mut settings = state.settings.read().await.clone();
     settings.gdrive_access_token = Some(access_token);
     settings.gdrive_refresh_token = refresh_token;
+
+    let path = get_config_path(&app)?;
+    save_settings_impl(&path, &settings)?;
+    *state.settings.write().await = settings;
+
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn logout_gdrive(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<bool, StableError> {
+    let mut settings = state.settings.read().await.clone();
+    settings.gdrive_access_token = None;
+    settings.gdrive_refresh_token = None;
 
     let path = get_config_path(&app)?;
     save_settings_impl(&path, &settings)?;
@@ -488,6 +561,34 @@ pub async fn list_gdrive_vods(state: State<'_, AppState>) -> Result<Vec<vod_core
         &token,
         refresh_token.as_deref(),
         folder_id.as_deref(),
+    )
+    .await
+    .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn get_gdrive_quota(state: State<'_, AppState>) -> Result<vod_core::StorageQuota, StableError> {
+    let (client_id, client_secret, token, refresh_token) = {
+        let s = state.settings.read().await;
+        (
+            s.gdrive_client_id.clone().unwrap_or_default(),
+            s.gdrive_client_secret.clone().unwrap_or_default(),
+            s.gdrive_access_token.clone().unwrap_or_default(),
+            s.gdrive_refresh_token.clone(),
+        )
+    };
+    if token.is_empty() {
+        return Err(StableError::new(
+            "AUTH_ERROR",
+            "Please connect your Google Drive account in Settings first",
+        ));
+    }
+
+    vod_core::storage_gdrive::get_gdrive_quota(
+        &client_id,
+        &client_secret,
+        &token,
+        refresh_token.as_deref(),
     )
     .await
     .map_err(Into::into)
@@ -592,6 +693,29 @@ pub async fn list_webdav_vods(state: State<'_, AppState>) -> Result<Vec<vod_core
 }
 
 #[tauri::command]
+pub async fn get_webdav_quota(state: State<'_, AppState>) -> Result<vod_core::StorageQuota, StableError> {
+    let creds = {
+        let s = state.settings.read().await;
+        vod_core::storage_webdav::WebDavCredentials {
+            endpoint: s.webdav_endpoint.clone().unwrap_or_default(),
+            username: s.webdav_username.clone().unwrap_or_default(),
+            password: s.webdav_password.clone().unwrap_or_default(),
+            folder: s.webdav_folder.clone(),
+        }
+    };
+    if creds.endpoint.is_empty() {
+        return Err(StableError::new(
+            "CONFIG_ERROR",
+            "WebDAV Endpoint must be configured in Settings",
+        ));
+    }
+
+    vod_core::storage_webdav::get_webdav_quota(&creds)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn delete_webdav_vod(
     state: State<'_, AppState>,
     filename_or_href: String,
@@ -669,12 +793,6 @@ pub async fn login_youtube(
             s.youtube_client_secret.clone().unwrap_or_default(),
         )
     };
-    if client_id.is_empty() || client_secret.is_empty() {
-        return Err(StableError::new(
-            "CONFIG_ERROR",
-            "YouTube Client ID and Client Secret must be set in Settings",
-        ));
-    }
 
     let (access_token, refresh_token) =
         start_google_oauth(&client_id, &client_secret).await?;
@@ -687,6 +805,44 @@ pub async fn login_youtube(
     *state.settings.write().await = settings;
 
     Ok(true)
+}
+
+#[tauri::command]
+pub async fn logout_youtube(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), StableError> {
+    let mut settings = state.settings.read().await.clone();
+    settings.youtube_access_token = None;
+    settings.youtube_refresh_token = None;
+
+    let path = get_config_path(&app)?;
+    save_settings_impl(&path, &settings)?;
+    *state.settings.write().await = settings;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_youtube_token(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    token: String,
+) -> Result<(), StableError> {
+    let token = token.trim().to_string();
+    if token.is_empty() {
+        return Err(StableError::new("AUTH_ERROR", "Token cannot be empty"));
+    }
+
+    let mut settings = state.settings.read().await.clone();
+    settings.youtube_access_token = Some(token);
+    settings.youtube_refresh_token = None;
+
+    let path = get_config_path(&app)?;
+    save_settings_impl(&path, &settings)?;
+    *state.settings.write().await = settings;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -740,7 +896,9 @@ pub async fn delete_twitch_vod(
             s.twitch_access_token.clone().unwrap_or_default(),
         )
     };
-    if client_id.is_empty() || token.is_empty() {
+    let (client_id, _) =
+        vod_core::twitch::resolve_twitch_credentials(&client_id, "");
+    if token.is_empty() {
         return Err(StableError::new("AUTH_ERROR", "Twitch authentication token missing"));
     }
     vod_core::twitch::delete_vod(&client_id, &token, &vod_id)
@@ -802,6 +960,7 @@ pub async fn worker_sync_settings(
         "crf": s.crf,
         "auto_archive_enabled": s.auto_archive_enabled,
         "auto_archive_interval_mins": s.auto_archive_interval_mins,
+        "max_storage_gb": s.max_storage_gb.unwrap_or(100),
     });
 
     let client = reqwest::Client::builder()
@@ -888,6 +1047,9 @@ pub async fn worker_dispatch_job(
             s.webdav_folder.clone(),
         )
     };
+
+    let (twitch_cid, _) =
+        vod_core::twitch::resolve_twitch_credentials(&twitch_cid, "");
 
     let s3_config = if upload_to_s3.unwrap_or(false) && !s3_ep.is_empty() && !s3_bkt.is_empty() {
         Some(serde_json::json!({

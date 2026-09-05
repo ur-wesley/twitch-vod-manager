@@ -29,6 +29,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",
@@ -37,5 +38,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFGMTI1NDgwMjIxQTBGMjUKUldRbER4b2lnRlFTSDFMeXkrTzEyRTZNRjhrMFl3RlNJY29Dc1F5VTYrTFZmb2V0bW1EVllCNkYK",
+      "endpoints": [
+        "https://github.com/ur-wesley/twitch-vod-manager/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

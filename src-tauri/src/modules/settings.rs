@@ -48,6 +48,12 @@ pub struct AppSettings {
     pub worker_auto_sync: Option<bool>,
     pub auto_archive_enabled: Option<bool>,
     pub auto_archive_interval_mins: Option<u32>,
+    #[serde(default = "default_max_storage_gb")]
+    pub max_storage_gb: Option<u32>,
+}
+
+fn default_max_storage_gb() -> Option<u32> {
+    Some(100)
 }
 
 impl Default for AppSettings {
@@ -96,6 +102,7 @@ impl Default for AppSettings {
             worker_auto_sync: Some(true),
             auto_archive_enabled: Some(false),
             auto_archive_interval_mins: Some(15),
+            max_storage_gb: Some(100),
         }
     }
 }
@@ -253,8 +260,6 @@ impl AppSettings {
         out.push_str("# ==========================================\n\n");
 
         out.push_str("[twitch]\n");
-        out.push_str(&format!("client_id = {:?}\n", self.twitch_client_id));
-        out.push_str(&format!("client_secret = {:?}\n", self.twitch_client_secret));
         if let Some(ref u) = self.twitch_username {
             out.push_str(&format!("username = {:?}\n", u));
         }
@@ -272,12 +277,6 @@ impl AppSettings {
         out.push_str(&format!("secret_key = {:?}\n", self.s3_secret_key));
 
         out.push_str("\n[gdrive]\n");
-        if let Some(ref cid) = self.gdrive_client_id {
-            out.push_str(&format!("client_id = {:?}\n", cid));
-        }
-        if let Some(ref cs) = self.gdrive_client_secret {
-            out.push_str(&format!("client_secret = {:?}\n", cs));
-        }
         if let Some(ref fid) = self.gdrive_folder_id {
             out.push_str(&format!("folder_id = {:?}\n", fid));
         }
@@ -302,14 +301,6 @@ impl AppSettings {
         }
         if let Some(ref o) = self.output_dir {
             out.push_str(&format!("output_dir = {:?}\n", o));
-        }
-
-        out.push_str("\n[youtube]\n");
-        if let Some(ref cid) = self.youtube_client_id {
-            out.push_str(&format!("client_id = {:?}\n", cid));
-        }
-        if let Some(ref cs) = self.youtube_client_secret {
-            out.push_str(&format!("client_secret = {:?}\n", cs));
         }
 
         out.push_str("\n[tools]\n");

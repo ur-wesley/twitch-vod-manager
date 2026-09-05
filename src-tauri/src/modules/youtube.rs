@@ -27,14 +27,46 @@ struct GoogleTokenResponse {
     refresh_token: Option<String>,
 }
 
+// Default desktop client credentials for YouTube integration
+// Can be overridden in Settings -> Accounts or via environment variables
+pub const DEFAULT_YOUTUBE_CLIENT_ID: &str = "841123498124-71t8l5m6qap157n8430b8s1a9k7d3e2v.apps.googleusercontent.com";
+pub const DEFAULT_YOUTUBE_CLIENT_SECRET: &str = "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ec";
+
 pub async fn start_google_oauth(
     client_id: &str,
     client_secret: &str,
 ) -> Result<(String, Option<String>), AppError> {
+    let env_client_id = std::env::var("YOUTUBE_CLIENT_ID").ok();
+    let env_client_secret = std::env::var("YOUTUBE_CLIENT_SECRET").ok();
+
+    let effective_client_id = if !client_id.trim().is_empty() {
+        client_id.trim()
+    } else if let Some(ref env_id) = env_client_id {
+        if !env_id.trim().is_empty() {
+            env_id.trim()
+        } else {
+            DEFAULT_YOUTUBE_CLIENT_ID
+        }
+    } else {
+        DEFAULT_YOUTUBE_CLIENT_ID
+    };
+
+    let effective_client_secret = if !client_secret.trim().is_empty() {
+        client_secret.trim()
+    } else if let Some(ref env_sec) = env_client_secret {
+        if !env_sec.trim().is_empty() {
+            env_sec.trim()
+        } else {
+            DEFAULT_YOUTUBE_CLIENT_SECRET
+        }
+    } else {
+        DEFAULT_YOUTUBE_CLIENT_SECRET
+    };
+
     let redirect_uri = "http://localhost:17564/auth/callback";
     let auth_url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth?client_id={}&redirect_uri={}&response_type=code&scope=https://www.googleapis.com/auth/youtube.upload&access_type=offline&prompt=consent",
-        client_id, redirect_uri
+        effective_client_id, redirect_uri
     );
 
     let listener = TcpListener::bind("127.0.0.1:17564").await.map_err(|e| {
@@ -43,25 +75,48 @@ pub async fn start_google_oauth(
 
     let _ = open::that(&auth_url);
 
-    let (mut socket, _) = listener.accept().await.map_err(|e| {
-        AppError::Auth(format!("Failed to accept incoming Google callback: {}", e))
-    })?;
+    // Allow up to 3 minutes for authorization
+    let accept_future = async {
+        loop {
+            let (mut socket, _) = listener.accept().await?;
+            let mut buffer = [0u8; 4096];
+            let n = socket.read(&mut buffer).await?;
+            let request_str = String::from_utf8_lossy(&buffer[..n]);
+            let first_line = request_str.lines().next().unwrap_or_default();
 
-    let mut buffer = [0u8; 4096];
-    let n = socket.read(&mut buffer).await.map_err(|e| {
-        AppError::Auth(format!("Failed to read Google callback: {}", e))
-    })?;
+            if first_line.contains("/auth/callback") {
+                if let Some(code) = extract_param(&request_str, "code") {
+                    let response = concat!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n",
+                        "<!DOCTYPE html><html><body style='font-family:sans-serif;background:#0d1117;color:#fff;display:flex;align-items:center;justify-content:center;height:90vh;'>",
+                        "<div style='text-align:center;'><h2>YouTube Authorization Successful!</h2>",
+                        "<p>You can close this window and return to Twitch VOD Manager.</p></div></body></html>"
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.flush().await;
+                    return Ok(code);
+                } else if let Some(err) = extract_param(&request_str, "error") {
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<!DOCTYPE html><html><body style='font-family:sans-serif;background:#0d1117;color:#fff;display:flex;align-items:center;justify-content:center;height:90vh;'><div style='text-align:center;'><h2>Authorization Denied</h2><p>{}</p></div></body></html>",
+                        err
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.flush().await;
+                    return Err(AppError::Auth(format!("Google authorization denied: {}", err)));
+                }
+            } else {
+                let not_found = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+                let _ = socket.write_all(not_found.as_bytes()).await;
+            }
+        }
+    };
 
-    let request_str = String::from_utf8_lossy(&buffer[..n]);
-    let code = extract_param(&request_str, "code").ok_or_else(|| {
-        AppError::Auth("Authorization code missing from Google callback URL".to_string())
-    })?;
+    let code = tokio::time::timeout(std::time::Duration::from_secs(180), accept_future)
+        .await
+        .map_err(|_| AppError::Auth("Google OAuth timed out waiting for user approval".to_string()))?
+        .map_err(|e: AppError| e)?;
 
-    let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<!DOCTYPE html><html><body style='font-family:sans-serif;background:#0d1117;color:#fff;display:flex;align-items:center;justify-content:center;height:90vh;'><div style='text-align:center;'><h2>YouTube Authorization Successful!</h2><p>You can close this window now.</p></div></body></html>";
-    let _ = socket.write_all(response.as_bytes()).await;
-    let _ = socket.flush().await;
-
-    exchange_google_code(client_id, client_secret, &code, redirect_uri).await
+    exchange_google_code(effective_client_id, effective_client_secret, &code, redirect_uri).await
 }
 
 fn extract_param(req: &str, param: &str) -> Option<String> {

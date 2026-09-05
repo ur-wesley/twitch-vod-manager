@@ -62,15 +62,38 @@ struct HelixVideosResponse {
     data: Vec<TwitchVod>,
 }
 
+pub const DEFAULT_TWITCH_CLIENT_ID: &str = "kimne78kx3ncx6brgo4mv6wki5h1ko";
+
 pub async fn start_oauth_flow(
     client_id: &str,
     client_secret: &str,
 ) -> Result<(String, Option<String>), AppError> {
+    let (effective_client_id, effective_client_secret) =
+        vod_core::twitch::resolve_twitch_credentials(client_id, client_secret);
+
     let redirect_uri = "http://localhost:17563/auth/callback";
-    let auth_url = format!(
-        "https://id.twitch.tv/oauth2/authorize?client_id={}&redirect_uri={}&response_type=code&scope=user:read:email+channel:read:vhs+user:read:broadcast",
-        client_id, redirect_uri
-    );
+
+    if effective_client_id.is_empty()
+        || effective_client_id == vod_core::twitch::DEFAULT_TWITCH_CLIENT_ID
+    {
+        return Err(AppError::Auth(format!(
+            "Twitch login needs your own Developer Console app. Create one at https://dev.twitch.tv/console/apps , add OAuth Redirect URL exactly `{redirect_uri}` (http, no trailing slash), then paste Client ID (+ Secret) in Settings → Twitch credentials."
+        )));
+    }
+
+    let is_implicit = effective_client_secret.is_empty();
+
+    let auth_url = if is_implicit {
+        format!(
+            "https://id.twitch.tv/oauth2/authorize?client_id={}&redirect_uri={}&response_type=token&scope=user:read:email+user:read:broadcast+channel:manage:videos",
+            effective_client_id, redirect_uri
+        )
+    } else {
+        format!(
+            "https://id.twitch.tv/oauth2/authorize?client_id={}&redirect_uri={}&response_type=code&scope=user:read:email+user:read:broadcast+channel:manage:videos",
+            effective_client_id, redirect_uri
+        )
+    };
 
     let listener = TcpListener::bind("127.0.0.1:17563").await.map_err(|e| {
         AppError::Auth(format!("Could not start local auth listener on port 17563: {}", e))
@@ -78,41 +101,118 @@ pub async fn start_oauth_flow(
 
     let _ = open::that(&auth_url);
 
-    let (mut socket, _) = listener.accept().await.map_err(|e| {
-        AppError::Auth(format!("Failed to accept incoming OAuth callback: {}", e))
-    })?;
+    // Timeout after 3 minutes if user abandons login
+    let start_time = std::time::Instant::now();
+    let timeout_duration = std::time::Duration::from_secs(180);
 
-    let mut buffer = [0u8; 4096];
-    let n = socket.read(&mut buffer).await.map_err(|e| {
-        AppError::Auth(format!("Failed to read OAuth callback request: {}", e))
-    })?;
+    let mut captured_token: Option<String> = None;
+    let mut captured_code: Option<String> = None;
 
-    let request_str = String::from_utf8_lossy(&buffer[..n]);
-    let code = extract_code_from_request(&request_str).ok_or_else(|| {
-        AppError::Auth("Authorization code missing from callback URL".to_string())
-    })?;
+    while start_time.elapsed() < timeout_duration {
+        let accept_result = tokio::time::timeout(std::time::Duration::from_secs(10), listener.accept()).await;
+        let (mut socket, _) = match accept_result {
+            Ok(Ok(pair)) => pair,
+            Ok(Err(e)) => return Err(AppError::Auth(format!("Failed to accept incoming OAuth connection: {}", e))),
+            Err(_) => continue,
+        };
 
-    let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<!DOCTYPE html><html><body style='font-family:sans-serif;background:#0d1117;color:#fff;display:flex;align-items:center;justify-content:center;height:90vh;'><div style='text-align:center;'><h2>Twitch Authentication Successful!</h2><p>You can close this window and return to the Twitch VOD Manager app.</p></div></body></html>";
-    let _ = socket.write_all(response.as_bytes()).await;
-    let _ = socket.flush().await;
+        let mut buffer = [0u8; 4096];
+        let n = socket.read(&mut buffer).await.map_err(|e| {
+            AppError::Auth(format!("Failed to read OAuth request: {}", e))
+        })?;
 
-    exchange_code_for_token(client_id, client_secret, &code, redirect_uri).await
+        let request_str = String::from_utf8_lossy(&buffer[..n]);
+        let first_line = request_str.lines().next().unwrap_or_default();
+
+        if first_line.contains("/auth/token") {
+            // Received access_token from frontend JS callback (implicit flow)
+            if let Some(token) = extract_param_from_path(first_line, "access_token") {
+                captured_token = Some(token);
+                let response = "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nContent-Type: text/plain\r\n\r\nOK";
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.flush().await;
+                break;
+            }
+        } else if first_line.contains("/auth/callback") {
+            if is_implicit {
+                let response = concat!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n",
+                    "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Twitch Login</title></head>",
+                    "<body style='font-family:sans-serif;background:#0d1117;color:#fff;display:flex;align-items:center;justify-content:center;height:90vh;'>",
+                    "<div style='text-align:center;'>",
+                    "<h2 id='msg'>Processing Twitch Login...</h2>",
+                    "<p id='sub'>Please wait a moment while we finish signing you in.</p>",
+                    "</div>",
+                    "<script>",
+                    "const hash = window.location.hash.substring(1);",
+                    "const params = new URLSearchParams(hash);",
+                    "const token = params.get('access_token');",
+                    "const err = params.get('error_description') || params.get('error');",
+                    "if (token) {",
+                    "  fetch('/auth/token?access_token=' + encodeURIComponent(token))",
+                    "    .then(() => {",
+                    "      document.getElementById('msg').innerText = 'Twitch Authentication Successful!';",
+                    "      document.getElementById('sub').innerText = 'You can close this window and return to the Twitch VOD Manager app.';",
+                    "    })",
+                    "    .catch(() => { document.getElementById('msg').innerText = 'Failed to pass token to app.'; });",
+                    "} else if (err) {",
+                    "  document.getElementById('msg').innerText = 'Twitch Login Error: ' + err;",
+                    "} else {",
+                    "  document.getElementById('msg').innerText = 'No access token received.';",
+                    "}",
+                    "</script></body></html>"
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.flush().await;
+            } else {
+                if let Some(code) = extract_param_from_path(first_line, "code") {
+                    captured_code = Some(code);
+                    let response = concat!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n",
+                        "<!DOCTYPE html><html><body style='font-family:sans-serif;background:#0d1117;color:#fff;display:flex;align-items:center;justify-content:center;height:90vh;'>",
+                        "<div style='text-align:center;'><h2>Twitch Authentication Successful!</h2>",
+                        "<p>You can close this window and return to the Twitch VOD Manager app.</p></div></body></html>"
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.flush().await;
+                    break;
+                }
+            }
+        } else {
+            let not_found = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+            let _ = socket.write_all(not_found.as_bytes()).await;
+        }
+    }
+
+    if let Some(token) = captured_token {
+        Ok((token, None))
+    } else if let Some(code) = captured_code {
+        exchange_code_for_token(&effective_client_id, &effective_client_secret, &code, redirect_uri).await
+    } else {
+        Err(AppError::Auth("Twitch authentication timed out or was cancelled".to_string()))
+    }
 }
 
-fn extract_code_from_request(req: &str) -> Option<String> {
-    let first_line = req.lines().next()?;
-    let path = first_line.split_whitespace().nth(1)?;
+fn extract_param_from_path(line: &str, param: &str) -> Option<String> {
+    let path = line.split_whitespace().nth(1)?;
     let query = path.split('?').nth(1)?;
     for pair in query.split('&') {
         let mut parts = pair.split('=');
-        if let (Some(key), Some(val)) = (parts.next(), parts.next()) {
-            if key == "code" {
-                return Some(val.to_string());
+        if let (Some(k), Some(v)) = (parts.next(), parts.next()) {
+            if k == param {
+                return urlencoding_decode(v);
             }
         }
     }
     None
 }
+
+fn urlencoding_decode(s: &str) -> Option<String> {
+    url::form_urlencoded::parse(format!("v={}", s).as_bytes())
+        .find(|(k, _)| k == "v")
+        .map(|(_, v)| v.into_owned())
+}
+
 
 async fn exchange_code_for_token(
     client_id: &str,
