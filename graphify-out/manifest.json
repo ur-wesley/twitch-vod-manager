@@ -1,0 +1,322 @@
+{
+  "C:\\Arbeit\\twitch-vod-manager\\bump.config.ts": {
+    "mtime": 1788628251.067296,
+    "hash": "5eadd12ad348bbab848a50524b0ab47b"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\postcss.config.mjs": {
+    "mtime": 1788625179.782582,
+    "hash": "0f8aa602547b154dc06be77b007c51d2"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\vite.config.ts": {
+    "mtime": 1788602921.748226,
+    "hash": "a7247c403e3ba71ca62c0192623aa1dd"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\core\\src\\compressor.rs": {
+    "mtime": 1788626430.5719497,
+    "hash": "19fd89dc26c79c7c8f82d554ba132d97"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\core\\src\\downloader.rs": {
+    "mtime": 1788626240.2156782,
+    "hash": "5e20b0477e691578043959fa35722c4a"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\core\\src\\error.rs": {
+    "mtime": 1788627255.4220946,
+    "hash": "8ca90b6716a645195ae404edf1f27dd0"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\core\\src\\lib.rs": {
+    "mtime": 1788634026.1628313,
+    "hash": "7d2b2c4ec17d1ae7ef92155dd78f924d"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\core\\src\\pipeline.rs": {
+    "mtime": 1788635210.166076,
+    "hash": "622ad0c86cd9039d837db9a39d0e9e8f"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\core\\src\\reporter.rs": {
+    "mtime": 1788627250.326542,
+    "hash": "15c3a66b395597e74d42ae8a43149ced"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\core\\src\\settings.rs": {
+    "mtime": 1788640717.2263653,
+    "hash": "b8c5e98876bfb80d7f82d79988a583f4"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\core\\src\\storage_gdrive.rs": {
+    "mtime": 1788639179.0422144,
+    "hash": "10a566cfad976a5be4c7f41c6f7b284c"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\core\\src\\storage_s3.rs": {
+    "mtime": 1788626263.6125462,
+    "hash": "4fcf4e6f6f77dc185e8bef7f7a1787aa"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\core\\src\\storage_webdav.rs": {
+    "mtime": 1788634369.2522342,
+    "hash": "dfe72ef3ae11dae0b34e1f4eb141f2ff"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\core\\src\\twitch.rs": {
+    "mtime": 1788636821.3227148,
+    "hash": "aaca949691621bda90deb29db728af07"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\core\\src\\youtube.rs": {
+    "mtime": 1788637642.7486112,
+    "hash": "e0fc413e8a5572d5df7f3c6378b488f7"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\worker\\src\\db.rs": {
+    "mtime": 1788627359.4373357,
+    "hash": "ba74a1b7dd863c5c88bc677944d91e39"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\worker\\src\\main.rs": {
+    "mtime": 1788640380.4843113,
+    "hash": "9ce783c5a5978b400be256c14c2913b1"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\worker\\src\\queue.rs": {
+    "mtime": 1788627373.00383,
+    "hash": "a4a26a53fb3854b3ed7bb1bdc1f49f15"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\worker\\src\\state.rs": {
+    "mtime": 1788626303.9928644,
+    "hash": "6fc853e3901e0d2b684f5a0da374a465"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\worker\\src\\storage_quota.rs": {
+    "mtime": 1788640722.1761713,
+    "hash": "0a5bc7eba61b5727fff16e2dafcc3f5d"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\worker\\src\\watcher.rs": {
+    "mtime": 1788640448.0869093,
+    "hash": "ed7cf2efd58ae4c1ffdcabe71b3a7018"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\worker\\src\\api\\mod.rs": {
+    "mtime": 1788642376.8084688,
+    "hash": "266c4ad773ff8fe6c082f3ab0609a385"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\App.tsx": {
+    "mtime": 1788642353.3262155,
+    "hash": "6a2820052dbe4abb9a21bd311a379b9c"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\index.tsx": {
+    "mtime": 1788624962.4277196,
+    "hash": "a4480df3334134533106eebd8f50a3f3"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\components\\MissingToolsBanner.tsx": {
+    "mtime": 1788626483.527832,
+    "hash": "04db4678c5960ce21d62ccf9ab3c0729"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\components\\MissingToolsModal.tsx": {
+    "mtime": 1788626490.1383803,
+    "hash": "ed99965dfa8240eb5f7a8a42ee3998b6"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\components\\UpdateDialog.tsx": {
+    "mtime": 1788628248.6641424,
+    "hash": "4d301d0eddc23e037de6e097e32ee9fc"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\components\\WindowTitleBar.tsx": {
+    "mtime": 1788642353.2746296,
+    "hash": "94fa819194b425ad12d318afc39998d5"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\components\\ui\\badge.tsx": {
+    "mtime": 1788624767.799588,
+    "hash": "826db5a54529963e0c9968693b3c5a5c"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\components\\ui\\button.tsx": {
+    "mtime": 1788624751.79808,
+    "hash": "c4238f80ef89e4494a6bbc626ced14cb"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\components\\ui\\card.tsx": {
+    "mtime": 1788624757.345437,
+    "hash": "df6ecb3bb8c09a748b9477a9dd4235f8"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\components\\ui\\dialog.tsx": {
+    "mtime": 1788625004.662596,
+    "hash": "583e2b7a3a9e24ec58808e91152261c7"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\components\\ui\\input.tsx": {
+    "mtime": 1788624762.447162,
+    "hash": "d0ab9070e31ea27fed16d5cadcd56e26"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\components\\ui\\progress.tsx": {
+    "mtime": 1788624764.854519,
+    "hash": "9d55c63edae25daaa5908e1b6a372606"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\components\\ui\\tabs.tsx": {
+    "mtime": 1788625047.4205136,
+    "hash": "9ec69a50bbc05ca81685944ba857c552"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\features\\auth\\UserProfile.tsx": {
+    "mtime": 1788639030.7385643,
+    "hash": "02796fa378f38004c09400966f4463a6"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\features\\cloud_library\\CloudLibrary.tsx": {
+    "mtime": 1788641724.7286162,
+    "hash": "19742b6c6055a43f85eba427a4ed430f"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\features\\cloud_library\\YouTubePublishModal.tsx": {
+    "mtime": 1788627903.308448,
+    "hash": "3853e45969585b75a027e88566f256db"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\features\\pipeline\\PipelineMonitor.tsx": {
+    "mtime": 1788627744.2088053,
+    "hash": "776c1addde1d7ce1cf8a55b15a6c531a"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\features\\settings\\SettingsView.tsx": {
+    "mtime": 1788642408.4495792,
+    "hash": "7a0b119142a7a91eafa2b841dfd89409"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\features\\vods\\ArchiveModal.tsx": {
+    "mtime": 1788627734.017442,
+    "hash": "4ff1cdfb3ac258001e30e2534ddc4a2c"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\features\\vods\\DeleteVodModal.tsx": {
+    "mtime": 1788626629.8914552,
+    "hash": "5145efdab4424dac4508113b6bb26b41"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\features\\vods\\VodCard.tsx": {
+    "mtime": 1788626636.105059,
+    "hash": "f5576e3cc0ca9f4ea4cbe486232384ee"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\features\\workers\\CloudWorkersView.tsx": {
+    "mtime": 1788642407.852762,
+    "hash": "a058f577d3aee2b0794edb4e9e81a993"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\lib\\utils.ts": {
+    "mtime": 1788624642.7027256,
+    "hash": "3d752e183b6f367a5d35af6c48e521d9"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\services\\tauri.ts": {
+    "mtime": 1788634087.3493726,
+    "hash": "824fbcbb0b6871d886ed081dd074c980"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src\\types\\index.ts": {
+    "mtime": 1788642378.7973454,
+    "hash": "1b34a72bcc84205d7990fd883fe97e64"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\build.rs": {
+    "mtime": 1788602508.2835782,
+    "hash": "9e949d967099bcc42cfa6f8765a6c938"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\src\\error.rs": {
+    "mtime": 1788626601.5858295,
+    "hash": "65c67f813ea3463d006d31eed89c0180"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\src\\lib.rs": {
+    "mtime": 1788637641.0963223,
+    "hash": "e28d12b10a91116cc00918d41340b6df"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\src\\main.rs": {
+    "mtime": 1788624617.1625352,
+    "hash": "6e6eb713e91948d400759ac93da4b2ef"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\src\\state.rs": {
+    "mtime": 1788623428.6716797,
+    "hash": "c93eb1099fa8fb060c33855e6aa749e5"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\src\\commands\\mod.rs": {
+    "mtime": 1788640715.4174902,
+    "hash": "e36b2dc3e63c1dccd9d608b8428666bf"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\src\\commands\\updater.rs": {
+    "mtime": 1788628487.747125,
+    "hash": "ba987ea8f9d27323859a77ef23c482f0"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\src\\modules\\compressor.rs": {
+    "mtime": 1788626350.4286437,
+    "hash": "83406f48f315d245a099416e5f30945f"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\src\\modules\\downloader.rs": {
+    "mtime": 1788619407.8664722,
+    "hash": "3884f9d76cf14145a1db4f18bb0726df"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\src\\modules\\mod.rs": {
+    "mtime": 1788623351.4279451,
+    "hash": "e40d5075c4f73ea7058848e49ebb1a07"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\src\\modules\\settings.rs": {
+    "mtime": 1788642397.376645,
+    "hash": "afcc8859926d764e53164915b199ab1b"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\src\\modules\\storage_s3.rs": {
+    "mtime": 1788625936.4111412,
+    "hash": "344e353e242dc9dbb4004458eb1a77c5"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\src\\modules\\twitch.rs": {
+    "mtime": 1788636833.4894652,
+    "hash": "b3f60afedf596ffe6eb3a2a4a206ab6d"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\src\\modules\\youtube.rs": {
+    "mtime": 1788627735.9285188,
+    "hash": "55073aac1005ef75afc54a9c3418c84b"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\index.html": {
+    "mtime": 1788626400.4002676,
+    "hash": "a0624da923b62bfa938efb4138bea48c"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\worker\\docker-compose.yml": {
+    "mtime": 1788642388.4854424,
+    "hash": "76b59c92e1413873f478827723f9cd88"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\crates\\worker\\README.md": {
+    "mtime": 1788634946.6736872,
+    "hash": "e272a00f1961a24ae532f9d1913b9544"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\docs\\superpowers\\plans\\2026-09-05-worker-storage-quota.md": {
+    "mtime": 1788640773.8551016,
+    "hash": "08d3fa47f422534dd1817198c540b67f"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\docs\\superpowers\\specs\\2026-09-05-worker-storage-quota-design.md": {
+    "mtime": 1788640141.1478217,
+    "hash": "114f1509137107dab3686b447af3bffd"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\icons\\128x128.png": {
+    "mtime": 1788602508.2875779,
+    "hash": "3a0071e4ad670fad0329d3a5e83d0bf9"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\icons\\128x128@2x.png": {
+    "mtime": 1788602508.2890928,
+    "hash": "eab2be12c5f8aeaf104a4695dd9171df"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\icons\\32x32.png": {
+    "mtime": 1788602508.2900982,
+    "hash": "faf8ee6541b945b98db35239b8a75715"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\icons\\icon.png": {
+    "mtime": 1788602508.3043694,
+    "hash": "9fdc4367276aafdd2c05ac214e9553c7"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\icons\\Square107x107Logo.png": {
+    "mtime": 1788602508.2911012,
+    "hash": "d4bc38359e2c01daa08354c55fa4df7c"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\icons\\Square142x142Logo.png": {
+    "mtime": 1788602508.29224,
+    "hash": "1e9c0358705085439e5c989fcbd6e988"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\icons\\Square150x150Logo.png": {
+    "mtime": 1788602508.2932413,
+    "hash": "084d20bce8096367fc694dfdf72c8ac5"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\icons\\Square284x284Logo.png": {
+    "mtime": 1788602508.2942402,
+    "hash": "6a936fe84398f24b7a63a36bddfd58d7"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\icons\\Square30x30Logo.png": {
+    "mtime": 1788602508.2942402,
+    "hash": "011e9cb456309157a9fc78c978248e00"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\icons\\Square310x310Logo.png": {
+    "mtime": 1788602508.295433,
+    "hash": "832231852e8e683e6aa2b690d194bdd2"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\icons\\Square44x44Logo.png": {
+    "mtime": 1788602508.2964725,
+    "hash": "a06297a35014e770cc33756fafa3b3a8"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\icons\\Square71x71Logo.png": {
+    "mtime": 1788602508.2964725,
+    "hash": "a3c80a0af688359094aa685881570eed"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\icons\\Square89x89Logo.png": {
+    "mtime": 1788602508.2974741,
+    "hash": "9f91ee8e1c1232ebde61c64d7923038f"
+  },
+  "C:\\Arbeit\\twitch-vod-manager\\src-tauri\\icons\\StoreLogo.png": {
+    "mtime": 1788602508.2974741,
+    "hash": "387b412d411bbd532dd3302d3948bf0e"
+  }
+}
