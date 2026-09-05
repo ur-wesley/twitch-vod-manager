@@ -1,6 +1,9 @@
-import { cn } from "@ur-wesley/solid-helper/cn";
+import { type ClassValue, clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
 
-export { cn };
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 export function formatBytes(bytes: number, decimals = 2): string {
   if (bytes === 0) return "0 B";

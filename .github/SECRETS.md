@@ -24,23 +24,33 @@ npx @tauri-apps/cli signer generate -w ~/.tauri/twitch-vod-manager.key
 
 Put private key contents in `TAURI_SIGNING_PRIVATE_KEY`, password in `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and the printed public key in `tauri.conf.json`.
 
-## OAuth — not GHA build secrets
+## OAuth (build env)
 
-Desktop OAuth is **runtime** (`std::env::var`), then built-in defaults. Putting OAuth vars in this workflow does **not** embed them in the shipped `.exe`.
+Wired into [`build-windows.yml`](workflows/build-windows.yml) `tauri-action` `env`. Create these under **Actions secrets** (values later OK — empty until set):
 
-| Env | Fallback |
-| --- | --- |
-| `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | Built-in Twitch web client (`kimne78…`); empty secret → implicit flow |
-| `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` | Built-in Google desktop client |
-| `GDRIVE_CLIENT_ID` / `GDRIVE_CLIENT_SECRET` | `YOUTUBE_*`, then same built-in Google client |
+| Secret | Required? | Purpose |
+| --- | --- | --- |
+| `TWITCH_CLIENT_ID` | For Twitch login | Helix OAuth client id |
+| `TWITCH_CLIENT_SECRET` | For code flow | Empty → implicit flow; non-empty → auth code |
+| `YOUTUBE_CLIENT_ID` | For YouTube login | Google OAuth desktop client id |
+| `YOUTUBE_CLIENT_SECRET` | For YouTube login | Google OAuth client secret |
+| `GDRIVE_CLIENT_ID` | Optional | Drive OAuth; falls back to `YOUTUBE_*` then built-in |
+| `GDRIVE_CLIENT_SECRET` | Optional | Drive OAuth secret |
 
-Example values / worker deploy env: [`crates/worker/.env.example`](../crates/worker/.env.example).
+Redirects (must match console config exactly, http, no trailing slash):
 
-Worker/VPS (Dokploy) may still set `TWITCH_*`, `YOUTUBE_*`, optional `GDRIVE_*`, plus `WORKER_API_KEY`, `DATA_DIR`, etc. That is **deploy** env, not this Windows build workflow.
+- Twitch: `http://localhost:17563/auth/callback`
+- YouTube: `http://localhost:17564/auth/callback`
+- GDrive: `http://localhost:17565/auth/callback`
+
+Example / worker deploy: [`crates/worker/.env.example`](../crates/worker/.env.example).  
+Local desktop also loads root `.env` at runtime via `load_oauth_dotenv`.
+
+Worker/VPS (Dokploy) may still set the same `TWITCH_*` / `YOUTUBE_*` / `GDRIVE_*` plus `WORKER_API_KEY`, `DATA_DIR`, etc.
 
 ## Release checklist
 
 1. Set `TAURI_SIGNING_PRIVATE_KEY` (+ password if used)
 2. Confirm `plugins.updater.pubkey` matches that key
-3. Push tag `vX.Y.Z` (or run workflow manually)
-4. OAuth: no extra GHA secrets for current architecture
+3. Set OAuth secrets above when ready
+4. Push tag `vX.Y.Z` (or run workflow manually)

@@ -1,6 +1,6 @@
 # Secrets: see ../SECRETS.md
 # Required for updater: TAURI_SIGNING_PRIVATE_KEY (+ PASSWORD if set)
-# OAuth is runtime / built-in defaults — not GHA secrets
+# OAuth: TWITCH_*/YOUTUBE_*/GDRIVE_* (set in repo secrets; values filled later)
 name: Build App
 
 on:
@@ -66,6 +66,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
+          TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
         with:
           tagName: v__VERSION__
           releaseName: 'Twitch VOD Manager v__VERSION__'

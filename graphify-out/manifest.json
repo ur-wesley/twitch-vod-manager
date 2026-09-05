@@ -84,8 +84,8 @@
     "hash": "ed7cf2efd58ae4c1ffdcabe71b3a7018"
   },
   "C:\\Arbeit\\twitch-vod-manager\\crates\\worker\\src\\api\\mod.rs": {
-    "mtime": 1788642376.8084688,
-    "hash": "266c4ad773ff8fe6c082f3ab0609a385"
+    "mtime": 1788642646.036371,
+    "hash": "4a3b7f65ae4e5c7d47959f30953da021"
   },
   "C:\\Arbeit\\twitch-vod-manager\\src\\App.tsx": {
     "mtime": 1788642353.3262155,
@@ -108,8 +108,8 @@
     "hash": "4d301d0eddc23e037de6e097e32ee9fc"
   },
   "C:\\Arbeit\\twitch-vod-manager\\src\\components\\WindowTitleBar.tsx": {
-    "mtime": 1788642353.2746296,
-    "hash": "94fa819194b425ad12d318afc39998d5"
+    "mtime": 1788642465.3245955,
+    "hash": "d2b155baa41d1364cc5f4d6a3e677058"
   },
   "C:\\Arbeit\\twitch-vod-manager\\src\\components\\ui\\badge.tsx": {
     "mtime": 1788624767.799588,
@@ -172,12 +172,12 @@
     "hash": "f5576e3cc0ca9f4ea4cbe486232384ee"
   },
   "C:\\Arbeit\\twitch-vod-manager\\src\\features\\workers\\CloudWorkersView.tsx": {
-    "mtime": 1788642407.852762,
-    "hash": "a058f577d3aee2b0794edb4e9e81a993"
+    "mtime": 1788643335.2422361,
+    "hash": "7ee3e6db4092918309159534adad3328"
   },
   "C:\\Arbeit\\twitch-vod-manager\\src\\lib\\utils.ts": {
-    "mtime": 1788624642.7027256,
-    "hash": "3d752e183b6f367a5d35af6c48e521d9"
+    "mtime": 1788645020.2358034,
+    "hash": "d6609755cc2ac1d2a0a095cb6cdfcdbd"
   },
   "C:\\Arbeit\\twitch-vod-manager\\src\\services\\tauri.ts": {
     "mtime": 1788634087.3493726,
