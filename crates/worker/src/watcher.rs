@@ -152,7 +152,10 @@ pub async fn check_channel_and_archive(state: &AppState) -> Result<usize, String
         let gdrive_tok = state.db.get_config("gdrive_access_token").ok().flatten().unwrap_or_default();
         let gdrive_rtok = state.db.get_config("gdrive_refresh_token").ok().flatten();
         let gdrive_fid = state.db.get_config("gdrive_folder_id").ok().flatten();
-        let has_gdrive = !gdrive_tok.is_empty() || gdrive_rtok.is_some();
+        let has_real_gdrive_client = !gdrive_cid.is_empty()
+            && gdrive_cid != vod_core::storage_gdrive::DEFAULT_GDRIVE_CLIENT_ID;
+        let has_gdrive = (!gdrive_tok.is_empty() || gdrive_rtok.is_some())
+            && (has_real_gdrive_client || !gdrive_tok.is_empty());
         let gdrive_config = if has_gdrive {
             Some(vod_core::storage_gdrive::GDriveCredentials {
                 client_id: gdrive_cid,
@@ -200,6 +203,8 @@ pub async fn check_channel_and_archive(state: &AppState) -> Result<usize, String
             preset,
             crf,
             duration_secs: None,
+            start_secs: None,
+            end_secs: None,
             save_local,
             local_output_dir: Some(state.data_dir.join("completed").to_string_lossy().to_string()),
             upload_to_s3: has_s3,

@@ -41,6 +41,11 @@ pub struct WorkerStatusResponse {
     pub ffmpeg_available: bool,
     pub active_jobs_count: usize,
     pub auto_watcher_enabled: bool,
+    pub cpu_cores: usize,
+    pub cpu_brand: String,
+    pub has_nvenc: bool,
+    pub has_qsv: bool,
+    pub has_amf: bool,
     pub has_twitch: bool,
     pub has_s3: bool,
     pub has_gdrive: bool,
@@ -71,12 +76,27 @@ fn cred_presence(db: &Database) -> (bool, bool, bool, bool) {
         && !client_secret.is_empty()
         && cfg_nonempty(db, "twitch_user_id");
     let has_s3 = cfg_nonempty(db, "s3_endpoint") && cfg_nonempty(db, "s3_bucket");
-    let has_gdrive = cfg_nonempty(db, "gdrive_access_token")
+    let gdrive_cid = db
+        .get_config("gdrive_client_id")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let gdrive_cs = db
+        .get_config("gdrive_client_secret")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let (gdrive_cid, _) =
+        vod_core::storage_gdrive::resolve_gdrive_credentials(&gdrive_cid, &gdrive_cs);
+    let has_real_gdrive_client = !gdrive_cid.is_empty()
+        && gdrive_cid != vod_core::storage_gdrive::DEFAULT_GDRIVE_CLIENT_ID;
+    let has_gdrive_token = cfg_nonempty(db, "gdrive_access_token")
         || db
             .get_config("gdrive_refresh_token")
             .ok()
             .flatten()
             .is_some();
+    let has_gdrive = has_real_gdrive_client && has_gdrive_token;
     let has_webdav =
         cfg_nonempty(db, "webdav_endpoint") && cfg_nonempty(db, "webdav_username");
     (has_twitch, has_s3, has_gdrive, has_webdav)
@@ -90,6 +110,8 @@ pub struct CreateJobRequest {
     pub preset: Option<String>,
     pub crf: Option<u8>,
     pub duration_secs: Option<f64>,
+    pub start_secs: Option<f64>,
+    pub end_secs: Option<f64>,
 
     // Configurable destinations
     pub save_local: Option<bool>,
@@ -266,6 +288,14 @@ async fn get_status_handler(State(state): State<AppState>) -> Json<WorkerStatusR
 
     let (has_twitch, has_s3, has_gdrive, has_webdav) = cred_presence(&state.db);
 
+    let cpu_cores = sys.cpus().len().max(1);
+    let cpu_brand = sys
+        .cpus()
+        .first()
+        .map(|c| c.brand().trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "Unknown CPU".to_string());
+
     Json(WorkerStatusResponse {
         status: "online".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -281,6 +311,11 @@ async fn get_status_handler(State(state): State<AppState>) -> Json<WorkerStatusR
         ffmpeg_available: ffmpeg_info.available,
         active_jobs_count: active_count,
         auto_watcher_enabled,
+        cpu_cores,
+        cpu_brand,
+        has_nvenc: ffmpeg_info.has_nvenc,
+        has_qsv: ffmpeg_info.has_qsv,
+        has_amf: ffmpeg_info.has_amf,
         has_twitch,
         has_s3,
         has_gdrive,
@@ -423,30 +458,65 @@ async fn create_job_handler(
 
     // Google Drive fallback to worker DB
     let gdrive_config = if payload.upload_to_gdrive.unwrap_or(false) {
-        if payload.gdrive_config.is_some() {
-            payload.gdrive_config
+        let mut cfg = if let Some(c) = payload.gdrive_config {
+            c
         } else {
             let cid = state.db.get_config("gdrive_client_id").ok().flatten().unwrap_or_default();
             let cs = state.db.get_config("gdrive_client_secret").ok().flatten().unwrap_or_default();
-            let (cid, cs) = vod_core::storage_gdrive::resolve_gdrive_credentials(&cid, &cs);
             let tok = state.db.get_config("gdrive_access_token").ok().flatten().unwrap_or_default();
             let rtok = state.db.get_config("gdrive_refresh_token").ok().flatten();
             let fid = state.db.get_config("gdrive_folder_id").ok().flatten();
-            if !tok.is_empty() || rtok.is_some() {
-                Some(GDriveCredentials {
-                    client_id: cid,
-                    client_secret: cs,
-                    access_token: tok,
-                    refresh_token: rtok,
-                    folder_id: fid,
-                })
-            } else {
-                None
+            GDriveCredentials {
+                client_id: cid,
+                client_secret: cs,
+                access_token: tok,
+                refresh_token: rtok,
+                folder_id: fid,
             }
+        };
+
+        // If client credentials are empty in payload, load from worker DB
+        if cfg.client_id.trim().is_empty() {
+            cfg.client_id = state.db.get_config("gdrive_client_id").ok().flatten().unwrap_or_default();
+        }
+        if cfg.client_secret.trim().is_empty() {
+            cfg.client_secret = state.db.get_config("gdrive_client_secret").ok().flatten().unwrap_or_default();
+        }
+        let (cid, cs) = vod_core::storage_gdrive::resolve_gdrive_credentials(&cfg.client_id, &cfg.client_secret);
+        cfg.client_id = cid;
+        cfg.client_secret = cs;
+
+        if cfg.access_token.trim().is_empty() {
+            cfg.access_token = state.db.get_config("gdrive_access_token").ok().flatten().unwrap_or_default();
+        }
+        if cfg.refresh_token.is_none() {
+            cfg.refresh_token = state.db.get_config("gdrive_refresh_token").ok().flatten();
+        }
+        if cfg.folder_id.is_none() {
+            cfg.folder_id = state.db.get_config("gdrive_folder_id").ok().flatten();
+        }
+
+        let has_token = !cfg.access_token.trim().is_empty() || cfg.refresh_token.is_some();
+        let has_real_client = !cfg.client_id.trim().is_empty() && cfg.client_id != vod_core::storage_gdrive::DEFAULT_GDRIVE_CLIENT_ID;
+
+        if has_token && (has_real_client || !cfg.access_token.trim().is_empty()) {
+            Some(cfg)
+        } else {
+            None
         }
     } else {
         None
     };
+
+    if payload.upload_to_gdrive.unwrap_or(false) && gdrive_config.is_none() {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(CreateJobResponse {
+                job_id: String::new(),
+                message: "Google Drive upload requested, but valid Google Drive OAuth credentials are not configured on worker. Please sync settings or connect Google Drive in Settings.".to_string(),
+            }),
+        ));
+    }
 
     // WebDAV fallback to worker DB
     let webdav_config = if payload.upload_to_webdav.unwrap_or(false) {
@@ -499,6 +569,8 @@ async fn create_job_handler(
         preset,
         crf,
         duration_secs: payload.duration_secs,
+        start_secs: payload.start_secs,
+        end_secs: payload.end_secs,
         save_local,
         local_output_dir: Some(state.data_dir.join("completed").to_string_lossy().to_string()),
         upload_to_s3: payload.upload_to_s3.unwrap_or(false),
