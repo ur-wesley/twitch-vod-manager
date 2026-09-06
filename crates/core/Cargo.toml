@@ -1,6 +1,6 @@
 [package]
 name = "vod-core"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "Core pipeline, Twitch API, chunk downloader, FFmpeg compressor, and S3 manager for Twitch VODs"
 build = "build.rs"

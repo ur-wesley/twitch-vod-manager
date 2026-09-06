@@ -1,6 +1,6 @@
 [package]
 name = "vod-worker"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "Autonomous VPS Cloud Worker for Twitch VOD processing"
 
