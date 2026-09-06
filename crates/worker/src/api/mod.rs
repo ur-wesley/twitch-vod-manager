@@ -478,7 +478,7 @@ async fn create_job_handler(
             .get_config("encoder_preset")
             .ok()
             .flatten()
-            .unwrap_or_else(|| "hevc_nvenc".to_string())
+            .unwrap_or_else(|| "libx264".to_string())
     });
 
     let crf = payload.crf.unwrap_or_else(|| {

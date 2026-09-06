@@ -181,7 +181,7 @@ pub async fn check_channel_and_archive(state: &AppState) -> Result<usize, String
             None
         };
 
-        let preset = state.db.get_config("encoder_preset").ok().flatten().unwrap_or_else(|| "hevc_nvenc".to_string());
+        let preset = state.db.get_config("encoder_preset").ok().flatten().unwrap_or_else(|| "libx264".to_string());
         let crf = state.db.get_config("crf").ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(24);
         let save_local = state.db.get_config("save_local").ok().flatten().map(|v| v == "true").unwrap_or(true);
 
