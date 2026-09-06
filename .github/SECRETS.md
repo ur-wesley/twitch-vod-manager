@@ -7,11 +7,11 @@ Triggers: push tag `v*`, or `workflow_dispatch`.
 
 Set under **Repo → Settings → Secrets and variables → Actions**:
 
-| Secret | Required? | Purpose |
-| --- | --- | --- |
-| `GITHUB_TOKEN` | Auto | Create/upload GitHub Release. Actions provides this; do not add manually unless you override. |
-| `TAURI_SIGNING_PRIVATE_KEY` | **Yes** | Minisign private key. Signs updater artifacts (`createUpdaterArtifacts: true`). |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | **Yes if key has a password** | Unlocks the private key during `tauri-action`. |
+| Secret                               | Required?                     | Purpose                                                                                       |
+| ------------------------------------ | ----------------------------- | --------------------------------------------------------------------------------------------- |
+| `GITHUB_TOKEN`                       | Auto                          | Create/upload GitHub Release. Actions provides this; do not add manually unless you override. |
+| `TAURI_SIGNING_PRIVATE_KEY`          | **Yes**                       | Minisign private key. Signs updater artifacts (`createUpdaterArtifacts: true`).               |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | **Yes if key has a password** | Unlocks the private key during `tauri-action`.                                                |
 
 Public key must match and is baked in [`src-tauri/tauri.conf.json`](../src-tauri/tauri.conf.json) (`plugins.updater.pubkey`).  
 Update endpoint: `https://github.com/ur-wesley/twitch-vod-manager/releases/latest/download/latest.json`.
@@ -26,16 +26,16 @@ Put private key contents in `TAURI_SIGNING_PRIVATE_KEY`, password in `TAURI_SIGN
 
 ## OAuth (build env)
 
-Wired into [`build-windows.yml`](workflows/build-windows.yml) `tauri-action` `env`. Create these under **Actions secrets** (values later OK — empty until set):
+Wired into [`build-windows.yml`](workflows/build-windows.yml) `tauri-action` `env` and baked into the compiled release binary via `option_env!` (while still allowing runtime override via Settings UI or local `.env`). Create these under **Actions secrets** or **Actions variables**:
 
-| Secret | Required? | Purpose |
-| --- | --- | --- |
-| `TWITCH_CLIENT_ID` | For Twitch login | Helix OAuth client id |
-| `TWITCH_CLIENT_SECRET` | For code flow | Empty → implicit flow; non-empty → auth code |
-| `YOUTUBE_CLIENT_ID` | For YouTube login | Google OAuth desktop client id |
-| `YOUTUBE_CLIENT_SECRET` | For YouTube login | Google OAuth client secret |
-| `GDRIVE_CLIENT_ID` | Optional | Drive OAuth; falls back to `YOUTUBE_*` then built-in |
-| `GDRIVE_CLIENT_SECRET` | Optional | Drive OAuth secret |
+| Secret                  | Required?         | Purpose                                              |
+| ----------------------- | ----------------- | ---------------------------------------------------- |
+| `TWITCH_CLIENT_ID`      | For Twitch login  | Helix OAuth client id                                |
+| `TWITCH_CLIENT_SECRET`  | For code flow     | Empty → implicit flow; non-empty → auth code         |
+| `YOUTUBE_CLIENT_ID`     | For YouTube login | Google OAuth desktop client id                       |
+| `YOUTUBE_CLIENT_SECRET` | For YouTube login | Google OAuth client secret                           |
+| `GDRIVE_CLIENT_ID`      | Optional          | Drive OAuth; falls back to `YOUTUBE_*` then built-in |
+| `GDRIVE_CLIENT_SECRET`  | Optional          | Drive OAuth secret                                   |
 
 Redirects (must match console config exactly, http, no trailing slash):
 

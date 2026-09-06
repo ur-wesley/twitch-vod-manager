@@ -3,13 +3,19 @@ name = "vod-core"
 version = "0.2.1"
 edition = "2021"
 description = "Core pipeline, Twitch API, chunk downloader, FFmpeg compressor, and S3 manager for Twitch VODs"
+build = "build.rs"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
+reqwest = { version = "0.12", default-features = false, features = [
+  "json",
+  "rustls-tls",
+  "stream",
+  "multipart",
+] }
 regex = "1"
 url = "2"
 chrono = { version = "0.4", features = ["serde"] }

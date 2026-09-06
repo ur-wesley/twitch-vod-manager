@@ -28,36 +28,48 @@ struct GoogleTokenResponse {
 pub const DEFAULT_YOUTUBE_CLIENT_ID: &str = "841123498124-71t8l5m6qap157n8430b8s1a9k7d3e2v.apps.googleusercontent.com";
 pub const DEFAULT_YOUTUBE_CLIENT_SECRET: &str = "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ec";
 
+pub fn resolve_youtube_credentials(client_id: &str, client_secret: &str) -> (String, String) {
+    let env_or_baked = |runtime_key: &str, baked: Option<&'static str>| -> Option<String> {
+        if let Ok(v) = std::env::var(runtime_key) {
+            let trimmed = v.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+        if let Some(v) = baked {
+            let trimmed = v.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+        None
+    };
+
+    let cid = if !client_id.trim().is_empty() {
+        client_id.trim().to_string()
+    } else if let Some(id) = env_or_baked("YOUTUBE_CLIENT_ID", option_env!("YOUTUBE_CLIENT_ID")) {
+        id
+    } else {
+        DEFAULT_YOUTUBE_CLIENT_ID.to_string()
+    };
+
+    let csec = if !client_secret.trim().is_empty() {
+        client_secret.trim().to_string()
+    } else if let Some(sec) = env_or_baked("YOUTUBE_CLIENT_SECRET", option_env!("YOUTUBE_CLIENT_SECRET")) {
+        sec
+    } else {
+        DEFAULT_YOUTUBE_CLIENT_SECRET.to_string()
+    };
+
+    (cid, csec)
+}
+
 pub async fn start_google_oauth(
     client_id: &str,
     client_secret: &str,
 ) -> Result<(String, Option<String>), AppError> {
-    let env_client_id = std::env::var("YOUTUBE_CLIENT_ID").ok();
-    let env_client_secret = std::env::var("YOUTUBE_CLIENT_SECRET").ok();
-
-    let effective_client_id = if !client_id.trim().is_empty() {
-        client_id.trim()
-    } else if let Some(ref env_id) = env_client_id {
-        if !env_id.trim().is_empty() {
-            env_id.trim()
-        } else {
-            DEFAULT_YOUTUBE_CLIENT_ID
-        }
-    } else {
-        DEFAULT_YOUTUBE_CLIENT_ID
-    };
-
-    let effective_client_secret = if !client_secret.trim().is_empty() {
-        client_secret.trim()
-    } else if let Some(ref env_sec) = env_client_secret {
-        if !env_sec.trim().is_empty() {
-            env_sec.trim()
-        } else {
-            DEFAULT_YOUTUBE_CLIENT_SECRET
-        }
-    } else {
-        DEFAULT_YOUTUBE_CLIENT_SECRET
-    };
+    let (effective_client_id, effective_client_secret) =
+        resolve_youtube_credentials(client_id, client_secret);
 
     let redirect_uri = "http://localhost:17564/auth/callback";
 
@@ -121,7 +133,7 @@ pub async fn start_google_oauth(
         .map_err(|_| AppError::Auth("Google OAuth timed out waiting for user approval".to_string()))?
         .map_err(|e: AppError| e)?;
 
-    exchange_google_code(effective_client_id, effective_client_secret, &code, redirect_uri).await
+    exchange_google_code(&effective_client_id, &effective_client_secret, &code, redirect_uri).await
 }
 
 fn extract_param(req: &str, param: &str) -> Option<String> {
@@ -286,4 +298,39 @@ pub async fn upload_video_to_youtube(
 
     let final_id = video_id.unwrap_or_default();
     Ok(final_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_youtube_credentials_user_override() {
+        let (id, sec) = resolve_youtube_credentials("my_yt_id", "my_yt_secret");
+        assert_eq!(id, "my_yt_id");
+        assert_eq!(sec, "my_yt_secret");
+    }
+
+    #[test]
+    fn test_resolve_youtube_credentials_fallback() {
+        let (id, sec) = resolve_youtube_credentials("", "");
+        if let Some(baked) = option_env!("YOUTUBE_CLIENT_ID") {
+            if !baked.trim().is_empty() {
+                assert_eq!(id, baked.trim());
+            } else {
+                assert_eq!(id, DEFAULT_YOUTUBE_CLIENT_ID);
+            }
+        } else {
+            assert_eq!(id, DEFAULT_YOUTUBE_CLIENT_ID);
+        }
+        if let Some(baked) = option_env!("YOUTUBE_CLIENT_SECRET") {
+            if !baked.trim().is_empty() {
+                assert_eq!(sec, baked.trim());
+            } else {
+                assert_eq!(sec, DEFAULT_YOUTUBE_CLIENT_SECRET);
+            }
+        } else {
+            assert_eq!(sec, DEFAULT_YOUTUBE_CLIENT_SECRET);
+        }
+    }
 }

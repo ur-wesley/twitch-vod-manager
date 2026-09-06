@@ -29,41 +29,25 @@ struct GoogleTokenResponse {
 
 // Default desktop client credentials for YouTube integration
 // Can be overridden in Settings -> Accounts or via environment variables
-pub const DEFAULT_YOUTUBE_CLIENT_ID: &str = "841123498124-71t8l5m6qap157n8430b8s1a9k7d3e2v.apps.googleusercontent.com";
-pub const DEFAULT_YOUTUBE_CLIENT_SECRET: &str = "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ec";
+pub const DEFAULT_YOUTUBE_CLIENT_ID: &str = vod_core::youtube::DEFAULT_YOUTUBE_CLIENT_ID;
+pub const DEFAULT_YOUTUBE_CLIENT_SECRET: &str = vod_core::youtube::DEFAULT_YOUTUBE_CLIENT_SECRET;
 
 pub async fn start_google_oauth(
     client_id: &str,
     client_secret: &str,
 ) -> Result<(String, Option<String>), AppError> {
-    let env_client_id = std::env::var("YOUTUBE_CLIENT_ID").ok();
-    let env_client_secret = std::env::var("YOUTUBE_CLIENT_SECRET").ok();
-
-    let effective_client_id = if !client_id.trim().is_empty() {
-        client_id.trim()
-    } else if let Some(ref env_id) = env_client_id {
-        if !env_id.trim().is_empty() {
-            env_id.trim()
-        } else {
-            DEFAULT_YOUTUBE_CLIENT_ID
-        }
-    } else {
-        DEFAULT_YOUTUBE_CLIENT_ID
-    };
-
-    let effective_client_secret = if !client_secret.trim().is_empty() {
-        client_secret.trim()
-    } else if let Some(ref env_sec) = env_client_secret {
-        if !env_sec.trim().is_empty() {
-            env_sec.trim()
-        } else {
-            DEFAULT_YOUTUBE_CLIENT_SECRET
-        }
-    } else {
-        DEFAULT_YOUTUBE_CLIENT_SECRET
-    };
+    let (effective_client_id, effective_client_secret) =
+        vod_core::youtube::resolve_youtube_credentials(client_id, client_secret);
 
     let redirect_uri = "http://localhost:17564/auth/callback";
+
+    if effective_client_id == DEFAULT_YOUTUBE_CLIENT_ID
+        || effective_client_secret == DEFAULT_YOUTUBE_CLIENT_SECRET
+    {
+        return Err(AppError::Auth(format!(
+            "YouTube login needs your own Google Cloud OAuth client. Create a Desktop app at https://console.cloud.google.com/apis/credentials , add Authorized redirect URI exactly `{redirect_uri}` (http, no trailing slash), then paste Client ID + Secret in Settings → Accounts → Advanced YouTube credentials (or set YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET)."
+        )));
+    }
     let auth_url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth?client_id={}&redirect_uri={}&response_type=code&scope=https://www.googleapis.com/auth/youtube.upload&access_type=offline&prompt=consent",
         effective_client_id, redirect_uri
@@ -116,7 +100,7 @@ pub async fn start_google_oauth(
         .map_err(|_| AppError::Auth("Google OAuth timed out waiting for user approval".to_string()))?
         .map_err(|e: AppError| e)?;
 
-    exchange_google_code(effective_client_id, effective_client_secret, &code, redirect_uri).await
+    exchange_google_code(&effective_client_id, &effective_client_secret, &code, redirect_uri).await
 }
 
 fn extract_param(req: &str, param: &str) -> Option<String> {

@@ -42,18 +42,27 @@ pub const DEFAULT_GDRIVE_CLIENT_ID: &str = "841123498124-71t8l5m6qap157n8430b8s1
 pub const DEFAULT_GDRIVE_CLIENT_SECRET: &str = "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ec";
 
 pub fn resolve_gdrive_credentials(client_id: &str, client_secret: &str) -> (String, String) {
-    let env_nonempty = |key: &str| -> Option<String> {
-        std::env::var(key)
-            .ok()
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty())
+    let env_or_baked = |runtime_key: &str, baked: Option<&'static str>| -> Option<String> {
+        if let Ok(v) = std::env::var(runtime_key) {
+            let trimmed = v.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+        if let Some(v) = baked {
+            let trimmed = v.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+        None
     };
 
     let cid = if !client_id.trim().is_empty() {
         client_id.trim().to_string()
-    } else if let Some(id) = env_nonempty("GDRIVE_CLIENT_ID") {
+    } else if let Some(id) = env_or_baked("GDRIVE_CLIENT_ID", option_env!("GDRIVE_CLIENT_ID")) {
         id
-    } else if let Some(id) = env_nonempty("YOUTUBE_CLIENT_ID") {
+    } else if let Some(id) = env_or_baked("YOUTUBE_CLIENT_ID", option_env!("YOUTUBE_CLIENT_ID")) {
         id
     } else {
         DEFAULT_GDRIVE_CLIENT_ID.to_string()
@@ -61,9 +70,9 @@ pub fn resolve_gdrive_credentials(client_id: &str, client_secret: &str) -> (Stri
 
     let csec = if !client_secret.trim().is_empty() {
         client_secret.trim().to_string()
-    } else if let Some(sec) = env_nonempty("GDRIVE_CLIENT_SECRET") {
+    } else if let Some(sec) = env_or_baked("GDRIVE_CLIENT_SECRET", option_env!("GDRIVE_CLIENT_SECRET")) {
         sec
-    } else if let Some(sec) = env_nonempty("YOUTUBE_CLIENT_SECRET") {
+    } else if let Some(sec) = env_or_baked("YOUTUBE_CLIENT_SECRET", option_env!("YOUTUBE_CLIENT_SECRET")) {
         sec
     } else {
         DEFAULT_GDRIVE_CLIENT_SECRET.to_string()
@@ -674,7 +683,7 @@ pub async fn download_gdrive_file(
 
 #[cfg(test)]
 mod tests {
-    use super::parse_gdrive_quota_json;
+    use super::*;
 
     #[test]
     fn parses_string_quota_fields() {
@@ -723,5 +732,61 @@ mod tests {
         let json = serde_json::json!({ "kind": "drive#about" });
         assert!(parse_gdrive_quota_json(&json).is_err());
     }
+
+    #[test]
+    fn test_resolve_gdrive_credentials_user_override() {
+        let (id, sec) = resolve_gdrive_credentials("my_gd_id", "my_gd_secret");
+        assert_eq!(id, "my_gd_id");
+        assert_eq!(sec, "my_gd_secret");
+    }
+
+    #[test]
+    fn test_resolve_gdrive_credentials_fallback() {
+        let (id, sec) = resolve_gdrive_credentials("", "");
+        if let Some(baked) = option_env!("GDRIVE_CLIENT_ID") {
+            if !baked.trim().is_empty() {
+                assert_eq!(id, baked.trim());
+            } else if let Some(yt) = option_env!("YOUTUBE_CLIENT_ID") {
+                if !yt.trim().is_empty() {
+                    assert_eq!(id, yt.trim());
+                } else {
+                    assert_eq!(id, DEFAULT_GDRIVE_CLIENT_ID);
+                }
+            } else {
+                assert_eq!(id, DEFAULT_GDRIVE_CLIENT_ID);
+            }
+        } else if let Some(yt) = option_env!("YOUTUBE_CLIENT_ID") {
+            if !yt.trim().is_empty() {
+                assert_eq!(id, yt.trim());
+            } else {
+                assert_eq!(id, DEFAULT_GDRIVE_CLIENT_ID);
+            }
+        } else {
+            assert_eq!(id, DEFAULT_GDRIVE_CLIENT_ID);
+        }
+
+        if let Some(baked) = option_env!("GDRIVE_CLIENT_SECRET") {
+            if !baked.trim().is_empty() {
+                assert_eq!(sec, baked.trim());
+            } else if let Some(yt) = option_env!("YOUTUBE_CLIENT_SECRET") {
+                if !yt.trim().is_empty() {
+                    assert_eq!(sec, yt.trim());
+                } else {
+                    assert_eq!(sec, DEFAULT_GDRIVE_CLIENT_SECRET);
+                }
+            } else {
+                assert_eq!(sec, DEFAULT_GDRIVE_CLIENT_SECRET);
+            }
+        } else if let Some(yt) = option_env!("YOUTUBE_CLIENT_SECRET") {
+            if !yt.trim().is_empty() {
+                assert_eq!(sec, yt.trim());
+            } else {
+                assert_eq!(sec, DEFAULT_GDRIVE_CLIENT_SECRET);
+            }
+        } else {
+            assert_eq!(sec, DEFAULT_GDRIVE_CLIENT_SECRET);
+        }
+    }
 }
+
 

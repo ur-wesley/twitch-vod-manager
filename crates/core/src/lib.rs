@@ -31,8 +31,8 @@ pub use reporter::{
 pub use settings::{load_settings, save_settings, AppSettings};
 pub use storage_gdrive::{
     delete_gdrive_object, download_gdrive_file, get_gdrive_quota, list_gdrive_vods,
-    refresh_gdrive_token, start_gdrive_oauth, upload_vod_to_gdrive, GDriveCredentials,
-    GoogleDriveFile,
+    refresh_gdrive_token, resolve_gdrive_credentials, start_gdrive_oauth, upload_vod_to_gdrive,
+    GDriveCredentials, GoogleDriveFile,
 };
 pub use storage_s3::{
     delete_s3_object, download_vod_from_s3, list_bucket_vods, upload_vod_to_s3, S3Credentials,
@@ -43,9 +43,11 @@ pub use storage_webdav::{
     upload_vod_to_webdav, WebDavCredentials, WebDavFile,
 };
 pub use twitch::{
-    delete_vod, get_app_access_token, get_user_by_login, get_user_info, get_vod_qualities,
-    get_vods, start_oauth_flow, TwitchUser, TwitchVod, VodQuality,
+    delete_vod, get_app_access_token, get_user_by_id, get_user_by_login, get_user_info,
+    get_vod_qualities, get_vods, resolve_twitch_credentials, start_oauth_flow, TwitchUser,
+    TwitchVod, VodQuality,
 };
 pub use youtube::{
-    start_google_oauth, upload_video_to_youtube, YouTubeVideoMetadata,
+    resolve_youtube_credentials, start_google_oauth, upload_video_to_youtube,
+    YouTubeVideoMetadata,
 };
