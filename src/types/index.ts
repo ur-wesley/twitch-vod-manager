@@ -38,6 +38,17 @@ export interface FfmpegInfo {
   has_amf: boolean;
 }
 
+export interface SystemHardwareInfo {
+  cpu_brand: string;
+  cpu_cores: number;
+  cpu_physical_cores: number;
+  total_memory_mb: number;
+  gpu_name?: string | null;
+  has_nvenc: boolean;
+  has_qsv: boolean;
+  has_amf: boolean;
+}
+
 export interface ToolDownloadProgress {
   tool: string;
   stage: "downloading" | "extracting" | "configuring" | "verifying" | "done" | "error";
@@ -121,6 +132,7 @@ export interface CompressionProgress {
   fps: number;
   speed: string;
   size_bytes: number;
+  eta_seconds?: number;
 }
 
 export interface S3TransferProgress {
@@ -201,10 +213,31 @@ export interface WorkerStatus {
   ffmpeg_available: boolean;
   active_jobs_count: number;
   auto_watcher_enabled: boolean;
+  cpu_cores?: number;
+  cpu_brand?: string;
+  has_nvenc?: boolean;
+  has_qsv?: boolean;
+  has_amf?: boolean;
   has_twitch: boolean;
   has_s3: boolean;
   has_gdrive: boolean;
   has_webdav: boolean;
+}
+
+export interface DurationEstimationResult {
+  downloadSecs: number;
+  compressionSecs: number;
+  uploadSecs: number;
+  totalSecs: number;
+  effectiveFps: number;
+  speedMultiplier: number;
+  target: "local" | "worker";
+  isHardwareFallback: boolean;
+  fallbackReason?: string;
+  hardwareDescription: string;
+  isCalibrated: boolean;
+  downloadSizeMB: number;
+  estimatedOutputSizeMB: number;
 }
 
 export interface WorkerJob {
@@ -246,6 +279,8 @@ export interface PipelineConfig {
   preset: string;
   crf: number;
   duration_secs?: number;
+  start_secs?: number;
+  end_secs?: number;
   save_local?: boolean;
   upload_to_s3?: boolean;
   upload_to_gdrive?: boolean;

@@ -12,6 +12,7 @@ import type {
   S3TransferProgress,
   StableError,
   StorageQuota,
+  SystemHardwareInfo,
   ToolDownloadProgress,
   TwitchUser,
   TwitchVod,
@@ -83,6 +84,9 @@ export const deleteTwitchVod = (vodId: string): ResultAsync<void, StableError> =
 export const detectFfmpeg = (): ResultAsync<FfmpegInfo, StableError> =>
   tauriInvoke<FfmpegInfo>("detect_ffmpeg");
 
+export const getSystemHardwareInfo = (): ResultAsync<SystemHardwareInfo, StableError> =>
+  tauriInvoke<SystemHardwareInfo>("get_system_hardware_info");
+
 export const downloadAndInstallFfmpeg = (): ResultAsync<FfmpegInfo, StableError> =>
   tauriInvoke<FfmpegInfo>("download_and_install_ffmpeg");
 
@@ -93,6 +97,8 @@ export interface StartPipelineArgs {
   preset: string;
   crf: number;
   durationSecs?: number;
+  startSecs?: number;
+  endSecs?: number;
   saveLocal?: boolean;
   uploadToS3?: boolean;
   uploadToGdrive?: boolean;
@@ -109,6 +115,8 @@ export const startPipeline = (args: StartPipelineArgs): ResultAsync<string, Stab
     preset: args.preset,
     crf: args.crf,
     durationSecs: args.durationSecs,
+    startSecs: args.startSecs,
+    endSecs: args.endSecs,
     saveLocal: args.saveLocal ?? true,
     uploadToS3: args.uploadToS3 ?? true,
     uploadToGdrive: args.uploadToGdrive ?? false,
@@ -219,6 +227,8 @@ export interface WorkerDispatchJobArgs {
   preset?: string;
   crf?: number;
   durationSecs?: number;
+  startSecs?: number;
+  endSecs?: number;
   saveLocal?: boolean;
   uploadToS3?: boolean;
   uploadToGdrive?: boolean;
@@ -242,6 +252,8 @@ export const workerDispatchJob = (
     preset: args.preset,
     crf: args.crf,
     durationSecs: args.durationSecs,
+    startSecs: args.startSecs,
+    endSecs: args.endSecs,
     saveLocal: args.saveLocal,
     uploadToS3: args.uploadToS3,
     uploadToGdrive: args.uploadToGdrive,
