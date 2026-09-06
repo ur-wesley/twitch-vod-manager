@@ -408,7 +408,7 @@ pub async fn compress_vod(
         .arg(output_mp4_path);
 
     cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::null());
+    cmd.stderr(Stdio::piped());
 
     let mut child = cmd
         .spawn()
@@ -418,6 +418,27 @@ pub async fn compress_vod(
         .stdout
         .take()
         .ok_or_else(|| AppError::Compression("Failed to capture ffmpeg stdout".to_string()))?;
+
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| AppError::Compression("Failed to capture ffmpeg stderr".to_string()))?;
+
+    // Drain stderr asynchronously into a rolling ring buffer
+    let stderr_task = tokio::spawn(async move {
+        let mut reader = BufReader::new(stderr).lines();
+        let mut ring = std::collections::VecDeque::with_capacity(120);
+        while let Ok(Some(line)) = reader.next_line().await {
+            let line = line.trim();
+            if !line.is_empty() {
+                if ring.len() >= 100 {
+                    ring.pop_front();
+                }
+                ring.push_back(line.to_string());
+            }
+        }
+        ring.into_iter().collect::<Vec<String>>()
+    });
 
     let mut reader = BufReader::new(stdout).lines();
     let total_secs = estimated_duration_secs.unwrap_or(0.0);
@@ -430,6 +451,7 @@ pub async fn compress_vod(
     while let Ok(Some(line)) = reader.next_line().await {
         if is_cancelled.load(Ordering::Relaxed) {
             let _ = child.kill().await;
+            stderr_task.abort();
             return Err(AppError::Cancelled);
         }
 
@@ -479,10 +501,23 @@ pub async fn compress_vod(
     }
 
     let status = child.wait().await?;
+    let stderr_lines = match tokio::time::timeout(std::time::Duration::from_secs(3), stderr_task).await {
+        Ok(Ok(lines)) => lines,
+        _ => Vec::new(),
+    };
+
     if !status.success() {
+        let stderr_tail = if stderr_lines.is_empty() {
+            "No stderr output captured from ffmpeg".to_string()
+        } else {
+            let count = stderr_lines.len().min(30);
+            stderr_lines[stderr_lines.len() - count..].join("\n")
+        };
+
         return Err(AppError::Compression(format!(
-            "ffmpeg exited with non-zero status: {:?}",
-            status.code()
+            "ffmpeg exited with non-zero status: {:?}\nRecent output:\n{}",
+            status.code(),
+            stderr_tail
         )));
     }
 
