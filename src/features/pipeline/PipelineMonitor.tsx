@@ -25,6 +25,22 @@ export interface PipelineMonitorProps {
 }
 
 export const PipelineMonitor: Component<PipelineMonitorProps> = (props) => {
+  const getCompressionEta = (cp: CompressionProgress): number => {
+    if (cp.eta_seconds && cp.eta_seconds > 0) {
+      return cp.eta_seconds;
+    }
+    // Fallback: calculate from speed and percent/current_time_secs
+    if (cp.percent > 0 && cp.current_time_secs > 0) {
+      const speedVal = parseFloat(cp.speed.replace("x", "").trim());
+      if (speedVal > 0.05) {
+        const estTotalMediaSecs = cp.current_time_secs / (cp.percent / 100);
+        const remainingMediaSecs = Math.max(0, estTotalMediaSecs - cp.current_time_secs);
+        return Math.round(remainingMediaSecs / speedVal);
+      }
+    }
+    return 0;
+  };
+
   return (
     <Card class="border bg-card/70 backdrop-blur-sm shadow-md">
       <CardHeader class="pb-3 flex flex-row items-center justify-between">
@@ -79,7 +95,7 @@ export const PipelineMonitor: Component<PipelineMonitorProps> = (props) => {
               <span
                 class={
                   props.stage === "downloading"
-                    ? "i-mdi-download size-4 text-primary animate-bounce"
+                    ? "i-mdi-loading size-4 text-primary animate-spin"
                     : props.stage === "compressing" ||
                         props.stage === "uploading" ||
                         props.stage === "completed"
@@ -118,7 +134,7 @@ export const PipelineMonitor: Component<PipelineMonitorProps> = (props) => {
               <span
                 class={
                   props.stage === "compressing"
-                    ? "i-mdi-movie-filter size-4 text-primary animate-spin"
+                    ? "i-mdi-loading size-4 text-primary animate-spin"
                     : props.stage === "uploading" || props.stage === "completed"
                       ? "i-mdi-check-circle size-4 text-emerald-500"
                       : "i-mdi-circle-outline size-4 text-muted-foreground"
@@ -127,12 +143,18 @@ export const PipelineMonitor: Component<PipelineMonitorProps> = (props) => {
               2. Video Compression & Optimization (FFmpeg)
             </span>
             <Show when={props.stage === "compressing" ? props.compressionProgress : null}>
-              {(cp) => (
-                <span class="font-mono text-muted-foreground">
-                  {cp().percent.toFixed(1)}% • {cp().fps.toFixed(0)} FPS • {cp().speed} • Output:{" "}
-                  {formatBytes(cp().size_bytes)}
-                </span>
-              )}
+              {(cp) => {
+                const eta = () => getCompressionEta(cp());
+                return (
+                  <span class="font-mono text-muted-foreground">
+                    {cp().percent.toFixed(1)}% • {cp().fps.toFixed(0)} FPS • {cp().speed} • Output:{" "}
+                    {formatBytes(cp().size_bytes)}
+                    <Show when={eta() > 0}>
+                      <span> • ETA: {formatEta(eta())}</span>
+                    </Show>
+                  </span>
+                );
+              }}
             </Show>
           </div>
           <Progress
@@ -153,7 +175,7 @@ export const PipelineMonitor: Component<PipelineMonitorProps> = (props) => {
               <span
                 class={
                   props.stage === "uploading"
-                    ? "i-mdi-cloud-upload size-4 text-primary animate-pulse"
+                    ? "i-mdi-loading size-4 text-primary animate-spin"
                     : props.stage === "completed"
                       ? "i-mdi-check-circle size-4 text-emerald-500"
                       : "i-mdi-circle-outline size-4 text-muted-foreground"

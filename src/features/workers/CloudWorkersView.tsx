@@ -12,6 +12,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "~/components/ui/dialog";
+import { Skeleton } from "~/components/ui/skeleton";
+import { formatEta } from "~/lib/utils";
 import {
   onWorkerDownloadProgress,
   workerCancelJob,
@@ -25,18 +27,73 @@ import {
 } from "~/services/tauri";
 import type { AppSettings, WorkerJob, WorkerJobLog, WorkerStatus } from "~/types";
 
+const CACHE_KEY_JOBS = "tvm_worker_cached_jobs";
+const CACHE_KEY_STATUS = "tvm_worker_cached_status";
+
+let inMemoryJobs: WorkerJob[] = [];
+let inMemoryStatus: WorkerStatus | null = null;
+
+function getCachedJobs(): WorkerJob[] {
+  if (inMemoryJobs.length > 0) return inMemoryJobs;
+  try {
+    const raw = localStorage.getItem(CACHE_KEY_JOBS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        inMemoryJobs = parsed;
+        return parsed;
+      }
+    }
+  } catch {}
+  return [];
+}
+
+function setCachedJobs(jobs: WorkerJob[]) {
+  inMemoryJobs = jobs;
+  try {
+    localStorage.setItem(CACHE_KEY_JOBS, JSON.stringify(jobs));
+  } catch {}
+}
+
+function getCachedStatus(): WorkerStatus | null {
+  if (inMemoryStatus) return inMemoryStatus;
+  try {
+    const raw = localStorage.getItem(CACHE_KEY_STATUS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        inMemoryStatus = parsed;
+        return parsed;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function setCachedStatus(status: WorkerStatus | null) {
+  inMemoryStatus = status;
+  try {
+    if (status) {
+      localStorage.setItem(CACHE_KEY_STATUS, JSON.stringify(status));
+    }
+  } catch {}
+}
+
 export interface CloudWorkersViewProps {
   settings: AppSettings;
   onOpenSettings: () => void;
 }
 
 export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
-  const [status, setStatus] = createSignal<WorkerStatus | null>(null);
+  const initialJobs = getCachedJobs();
+  const initialStatus = getCachedStatus();
+
+  const [status, setStatus] = createSignal<WorkerStatus | null>(initialStatus);
   const [loadingStatus, setLoadingStatus] = createSignal(false);
-  const [isOnline, setIsOnline] = createSignal(false);
+  const [isOnline, setIsOnline] = createSignal(initialStatus !== null);
   const [pingLatency, setPingLatency] = createSignal<number | null>(null);
 
-  const [jobs, setJobs] = createSignal<WorkerJob[]>([]);
+  const [jobs, setJobs] = createSignal<WorkerJob[]>(initialJobs);
   const [loadingJobs, setLoadingJobs] = createSignal(false);
 
   // Sync state
@@ -72,6 +129,7 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
       (s) => {
         setPingLatency(Math.round(performance.now() - start));
         setStatus(s);
+        setCachedStatus(s);
         setIsOnline(true);
         setLoadingStatus(false);
       },
@@ -84,19 +142,34 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
   };
 
   const fetchJobs = () => {
-    if (!workerUrl() || !isOnline()) return;
+    if (!workerUrl()) return;
     setLoadingJobs(true);
 
     workerListJobs(workerUrl(), apiKey()).match(
       (list) => {
         setJobs(list);
+        setCachedJobs(list);
+        setIsOnline(true);
         setLoadingJobs(false);
       },
       (err) => {
         setLoadingJobs(false);
-        toast.error(`Failed to fetch VPS jobs: ${err.message}`);
+        if (isOnline()) {
+          toast.error(`Failed to fetch VPS jobs: ${err.message}`);
+        }
       },
     );
+  };
+
+  const getJobEta = (job: WorkerJob): string | null => {
+    if (job.progress_percent <= 1 || job.progress_percent >= 100) return null;
+    const createdAt = new Date(job.created_at).getTime();
+    const elapsedSeconds = (Date.now() - createdAt) / 1000;
+    if (elapsedSeconds < 2) return null;
+    const totalEstSeconds = elapsedSeconds / (job.progress_percent / 100);
+    const remainingSeconds = totalEstSeconds - elapsedSeconds;
+    if (remainingSeconds <= 0 || remainingSeconds > 86400 * 7) return null;
+    return formatEta(Math.round(remainingSeconds));
   };
 
   const refreshAll = () => {
@@ -382,7 +455,17 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
             <CardContent>
               <Show
                 when={status()}
-                fallback={<div class="text-xs text-muted-foreground">Connecting...</div>}
+                fallback={
+                  <Show
+                    when={loadingStatus()}
+                    fallback={<div class="text-xs text-muted-foreground">Unavailable</div>}
+                  >
+                    <div class="space-y-1.5 py-0.5">
+                      <Skeleton class="h-4 w-32" />
+                      <Skeleton class="h-3 w-40" />
+                    </div>
+                  </Show>
+                }
               >
                 <div class="text-sm font-bold text-foreground flex items-center justify-between">
                   <span>CPU: {Math.round(status()?.cpu_usage_percent || 0)}%</span>
@@ -412,7 +495,17 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
             <CardContent>
               <Show
                 when={status()}
-                fallback={<div class="text-xs text-muted-foreground">Connecting...</div>}
+                fallback={
+                  <Show
+                    when={loadingStatus()}
+                    fallback={<div class="text-xs text-muted-foreground">Unavailable</div>}
+                  >
+                    <div class="space-y-1.5 py-0.5">
+                      <Skeleton class="h-4 w-36" />
+                      <Skeleton class="h-3 w-48" />
+                    </div>
+                  </Show>
+                }
               >
                 <div class="text-sm font-bold text-foreground flex items-center justify-between">
                   <span>
@@ -539,13 +632,49 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
           <Show
             when={jobs().length > 0}
             fallback={
-              <div class="p-12 text-center border rounded-xl bg-card/30 space-y-2">
-                <span class="i-mdi-tray-remove size-8 text-muted-foreground mx-auto" />
-                <p class="text-sm font-medium text-foreground">No jobs on this worker yet</p>
-                <p class="text-xs text-muted-foreground">
-                  Archive a VOD and select "Cloud VPS Worker" to offload tasks to your server.
-                </p>
-              </div>
+              <Show
+                when={loadingJobs() || (loadingStatus() && !status())}
+                fallback={
+                  <div class="p-12 text-center border rounded-xl bg-card/30 space-y-2">
+                    <span class="i-mdi-tray-remove size-8 text-muted-foreground mx-auto" />
+                    <p class="text-sm font-medium text-foreground">No jobs on this worker yet</p>
+                    <p class="text-xs text-muted-foreground">
+                      Archive a VOD and select "Cloud VPS Worker" to offload tasks to your server.
+                    </p>
+                  </div>
+                }
+              >
+                {/* Skeleton Job Cards */}
+                <div class="space-y-2.5">
+                  <For each={[1, 2, 3]}>
+                    {() => (
+                      <div class="p-3.5 rounded-xl border bg-card/60 backdrop-blur-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div class="space-y-2 min-w-0 flex-1">
+                          <div class="flex items-center gap-2">
+                            <Skeleton class="h-5 w-20 rounded-md" />
+                            <Skeleton class="h-4 w-52 rounded" />
+                            <Skeleton class="h-3.5 w-16 rounded" />
+                          </div>
+                          <div class="space-y-1.5 pt-1 max-w-md">
+                            <div class="flex justify-between">
+                              <Skeleton class="h-3 w-28 rounded" />
+                              <Skeleton class="h-3 w-10 rounded" />
+                            </div>
+                            <Skeleton class="h-1.5 w-full rounded-full" />
+                          </div>
+                          <div class="flex items-center gap-3 pt-0.5">
+                            <Skeleton class="h-3 w-40 rounded" />
+                          </div>
+                        </div>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                          <Skeleton class="h-7 w-16 rounded-md" />
+                          <Skeleton class="h-7 w-24 rounded-md" />
+                        </div>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </Show>
             }
           >
             <div class="space-y-2.5">
@@ -577,7 +706,12 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
                         <div class="space-y-1 pt-1 max-w-md">
                           <div class="flex justify-between text-[11px] text-muted-foreground font-mono">
                             <span>Stage: {job.stage}</span>
-                            <span>{Math.round(job.progress_percent)}%</span>
+                            <span class="flex items-center gap-1.5">
+                              <Show when={getJobEta(job)}>
+                                {(eta) => <span>ETA: {eta()} •</span>}
+                              </Show>
+                              <span>{Math.round(job.progress_percent)}%</span>
+                            </span>
                           </div>
                           <div class="w-full h-1.5 bg-muted rounded-full overflow-hidden">
                             <div

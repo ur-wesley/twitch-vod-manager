@@ -17,6 +17,7 @@ import { ArchiveModal, type ArchiveModalConfirmConfig } from "~/features/vods/Ar
 import { DeleteVodModal } from "~/features/vods/DeleteVodModal";
 import { VodCard } from "~/features/vods/VodCard";
 import { CloudWorkersView } from "~/features/workers/CloudWorkersView";
+import { TasksView, recordLocalTask } from "~/features/tasks/TasksView";
 import {
   cancelActiveTask,
   checkForUpdates,
@@ -28,6 +29,7 @@ import {
   downloadS3Vod,
   downloadWebdavVod,
   getSettings,
+  getSystemHardwareInfo,
   getTwitchUser,
   getGdriveQuota,
   getWebdavQuota,
@@ -46,6 +48,7 @@ import {
   workerDispatchJob,
 } from "~/services/tauri";
 import type { UpdateInfoDto } from "~/services/tauri";
+import { recordEncodingTelemetry } from "~/lib/estimation";
 import type {
   AppSettings,
   CompressionProgress,
@@ -56,16 +59,18 @@ import type {
   S3Object,
   S3TransferProgress,
   StorageQuota,
+  SystemHardwareInfo,
   TwitchUser,
   TwitchVod,
   WebDavFile,
 } from "~/types";
 
 export const App: Component = () => {
-  const [activeTab, setActiveTab] = createSignal<"vods" | "cloud" | "workers" | "settings">("vods");
+  const [activeTab, setActiveTab] = createSignal<"vods" | "tasks" | "cloud" | "workers" | "settings">("vods");
   const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
   const [settings, setSettings] = createSignal<AppSettings | null>(null);
   const [ffmpegInfo, setFfmpegInfo] = createSignal<FfmpegInfo | null>(null);
+  const [systemHardware, setSystemHardware] = createSignal<SystemHardwareInfo | null>(null);
   const [twitchUser, setTwitchUser] = createSignal<TwitchUser | null>(null);
   const [browsedChannel, setBrowsedChannel] = createSignal<TwitchUser | null>(null);
   const [customChannelInput, setCustomChannelInput] = createSignal("");
@@ -166,9 +171,25 @@ export const App: Component = () => {
       setDownloadProgress(p);
     }).then((un) => (unlistenDl = un));
 
+    let recordedTelemetryForVod = "";
     onCompressionProgress((p) => {
       setPipelineStage("compressing");
       setCompressionProgress(p);
+      if (p.percent >= 90 && p.fps > 0 && recordedTelemetryForVod !== p.vod_id) {
+        recordedTelemetryForVod = p.vod_id;
+        const speedNum = parseFloat(p.speed.replace("x", "")) || (p.fps / 60);
+        recordEncodingTelemetry({
+          target: "local",
+          preset: settings()?.encoder_preset || "libx264",
+          width: 1920,
+          height: 1080,
+          fps: 60,
+          crf: settings()?.crf || 24,
+          actualFps: p.fps,
+          actualSpeed: speedNum,
+          durationSecs: p.current_time_secs || 0,
+        });
+      }
     }).then((un) => (unlistenCp = un));
 
     onS3UploadProgress((p) => {
@@ -205,6 +226,10 @@ export const App: Component = () => {
   const refreshFfmpegStatus = () => {
     detectFfmpeg().match(
       (info) => setFfmpegInfo(info),
+      () => {},
+    );
+    getSystemHardwareInfo().match(
+      (hw) => setSystemHardware(hw),
       () => {},
     );
   };
@@ -447,6 +472,8 @@ export const App: Component = () => {
         preset: config.preset,
         crf: config.crf,
         durationSecs,
+        startSecs: config.startSecs,
+        endSecs: config.endSecs,
         saveLocal: config.saveLocal,
         uploadToS3: config.uploadToS3,
         uploadToGdrive: config.uploadToGdrive,
@@ -459,7 +486,7 @@ export const App: Component = () => {
       }).match(
         (res) => {
           toast.success(`Dispatched to Cloud Worker! Job ID: #${res.job_id.slice(0, 8)}`);
-          setActiveTab("workers");
+          setActiveTab("tasks");
         },
         (err) => {
           toast.error(`Failed to dispatch to Cloud Worker: ${err.message}`);
@@ -477,12 +504,26 @@ export const App: Component = () => {
     setActiveVodId(config.vodId);
     setPipelineStage("downloading");
 
+    const localTaskId = `local-${config.vodId}-${Date.now()}`;
+    recordLocalTask({
+      id: localTaskId,
+      vod_id: config.vodId,
+      title: config.title,
+      status: "running",
+      stage: "downloading",
+      preset: config.preset,
+      crf: config.crf,
+      started_at: new Date().toISOString(),
+    });
+
     startPipeline({
       vodId: config.vodId,
       playlistUrl: config.playlistUrl,
       preset: config.preset,
       crf: config.crf,
       durationSecs,
+      startSecs: config.startSecs,
+      endSecs: config.endSecs,
       saveLocal: config.saveLocal,
       uploadToS3: config.uploadToS3,
       uploadToGdrive: config.uploadToGdrive,
@@ -491,11 +532,34 @@ export const App: Component = () => {
       youtubeMetadata: config.youtubeMetadata,
       deleteFromTwitchAfter: config.deleteFromTwitchAfter,
     }).match(
-      () => toast.success(`Pipeline started locally for VOD #${config.vodId}`),
+      (path) => {
+        setPipelineStage("completed");
+        recordLocalTask({
+          id: localTaskId,
+          vod_id: config.vodId,
+          title: config.title,
+          status: "completed",
+          stage: "completed",
+          local_path: path || undefined,
+          started_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+        });
+        toast.success(`Pipeline finished for VOD #${config.vodId}`);
+      },
       (err) => {
         setPipelineStage("idle");
         setActiveVodId(null);
-        toast.error(`Failed to start local pipeline: ${err.message}`);
+        recordLocalTask({
+          id: localTaskId,
+          vod_id: config.vodId,
+          title: config.title,
+          status: "failed",
+          stage: "failed",
+          error: err.message,
+          started_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+        });
+        toast.error(`Failed local pipeline: ${err.message}`);
       },
     );
   };
@@ -503,6 +567,18 @@ export const App: Component = () => {
   const handleCancelPipeline = () => {
     cancelActiveTask().match(
       () => {
+        const vid = activeVodId();
+        if (vid) {
+          recordLocalTask({
+            id: `local-${vid}`,
+            vod_id: vid,
+            title: `Twitch VOD #${vid}`,
+            status: "cancelled",
+            stage: "cancelled",
+            started_at: new Date().toISOString(),
+            completed_at: new Date().toISOString(),
+          });
+        }
         setPipelineStage("idle");
         setActiveVodId(null);
         toast.info("Active task cancelled");
@@ -610,7 +686,10 @@ export const App: Component = () => {
   };
 
   const isVodArchived = (vodId: string): boolean => {
-    return s3Objects().some((obj) => obj.key.includes(vodId) || obj.key.endsWith(`${vodId}.mp4`));
+    const inS3 = s3Objects().some((obj) => obj.key.includes(vodId) || obj.key.endsWith(`${vodId}.mp4`));
+    const inGdrive = gdriveFiles().some((f) => f.name.includes(vodId));
+    const inWebdav = webdavFiles().some((f) => f.name.includes(vodId));
+    return inS3 || inGdrive || inWebdav;
   };
 
   const handleOpenDeleteModal = (vod: TwitchVod) => {
@@ -703,6 +782,36 @@ export const App: Component = () => {
 
               <button
                 type="button"
+                title="Tasks"
+                aria-label="Tasks"
+                aria-current={activeTab() === "tasks" ? "page" : undefined}
+                onClick={() => setActiveTab("tasks")}
+                class={`flex items-center rounded-lg text-xs font-semibold transition-all relative ${
+                  sidebarCollapsed() ? "justify-center px-2 py-2.5" : "justify-between px-3 py-2"
+                } ${
+                  activeTab() === "tasks"
+                    ? "bg-sidebar-accent text-sidebar-foreground font-bold shadow-xs"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                }`}
+              >
+                <div class={`flex items-center ${sidebarCollapsed() ? "" : "gap-2.5"}`}>
+                  <span class="iconify mdi--format-list-checks size-4 text-primary" />
+                  <Show when={!sidebarCollapsed()}>
+                    <span>Tasks</span>
+                  </Show>
+                </div>
+                <Show when={pipelineStage() !== "idle"}>
+                  <span
+                    class={`rounded-full bg-primary animate-pulse ${
+                      sidebarCollapsed() ? "absolute top-1.5 right-1.5 size-2" : "size-2"
+                    }`}
+                    title="Active local pipeline running"
+                  />
+                </Show>
+              </button>
+
+              <button
+                type="button"
                 title="Cloud"
                 aria-label="Cloud"
                 aria-current={activeTab() === "cloud" ? "page" : undefined}
@@ -770,7 +879,11 @@ export const App: Component = () => {
             </nav>
 
             <Show when={!sidebarCollapsed() && pipelineStage() !== "idle"}>
-              <div class="rounded-xl border border-primary/30 bg-primary/10 p-3 space-y-1.5 animate-pulse">
+              <div
+                class="rounded-xl border border-primary/30 bg-primary/10 p-3 space-y-1.5 animate-pulse cursor-pointer hover:bg-primary/20 transition-colors"
+                onClick={() => setActiveTab("tasks")}
+                title="Click to view task in Tasks page"
+              >
                 <div class="flex items-center justify-between text-[11px] font-bold text-primary">
                   <span class="flex items-center gap-1.5">
                     <span class="size-2 rounded-full bg-primary animate-ping" />
@@ -785,8 +898,9 @@ export const App: Component = () => {
             </Show>
             <Show when={sidebarCollapsed() && pipelineStage() !== "idle"}>
               <div
-                class="mx-auto size-2 rounded-full bg-primary animate-pulse"
-                title={`Processing: ${pipelineStage()}`}
+                class="mx-auto size-2 rounded-full bg-primary animate-pulse cursor-pointer"
+                title={`Processing: ${pipelineStage()} (Click to open Tasks)`}
+                onClick={() => setActiveTab("tasks")}
               />
             </Show>
           </div>
@@ -1038,7 +1152,7 @@ export const App: Component = () => {
                     class="h-7.5 px-3 text-xs font-semibold gap-1 shrink-0"
                   >
                     <span
-                      class={`iconify mdi--arrow-right size-3.5 ${loadingChannel() ? "animate-spin" : ""}`}
+                      class={`iconify ${loadingChannel() ? "mdi--loading animate-spin" : "mdi--arrow-right"} size-3.5`}
                     />
                     Switch
                   </Button>
@@ -1148,6 +1262,21 @@ export const App: Component = () => {
             </div>
           </Show>
 
+          {/* Tab: Tasks & Queue */}
+          <Show when={activeTab() === "tasks" && settings()}>
+            <TasksView
+              settings={settings()!}
+              pipelineStage={pipelineStage()}
+              activeVodId={activeVodId()}
+              downloadProgress={downloadProgress()}
+              compressionProgress={compressionProgress()}
+              s3Progress={s3Progress()}
+              driveProgress={driveProgress()}
+              onCancelPipeline={handleCancelPipeline}
+              onOpenSettings={() => setActiveTab("settings")}
+            />
+          </Show>
+
           {/* Tab 2: Cloud & Drive Library */}
           <Show when={activeTab() === "cloud"}>
             <div class="flex-1 overflow-y-auto p-6 space-y-6">
@@ -1231,7 +1360,14 @@ export const App: Component = () => {
         defaultPreset={settings()?.encoder_preset}
         defaultCrf={settings()?.crf}
         hasWorkerConfigured={Boolean(settings()?.worker_url)}
+        hasS3Configured={Boolean(settings()?.s3_endpoint && settings()?.s3_bucket)}
+        hasGdriveConfigured={Boolean(settings()?.gdrive_access_token)}
+        hasWebdavConfigured={Boolean(settings()?.webdav_endpoint)}
+        hasYouTubeConfigured={Boolean(settings()?.youtube_access_token)}
         currentUserId={twitchUser()?.id}
+        localHardware={systemHardware()}
+        workerUrl={settings()?.worker_url}
+        workerApiKey={settings()?.worker_api_key}
       />
 
       {/* Delete VOD Modal */}
