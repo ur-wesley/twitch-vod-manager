@@ -9,12 +9,13 @@ COPY src-tauri/Cargo.toml ./src-tauri/
 
 RUN mkdir -p crates/core/src crates/worker/src src-tauri/src \
     && echo "" > crates/core/src/lib.rs \
+    && echo "fn main() {}" > crates/core/build.rs \
     && echo "fn main() {}" > crates/worker/src/main.rs \
     && echo "" > src-tauri/src/lib.rs \
     && echo "fn main() {}" > src-tauri/src/main.rs \
     && echo "fn main() {}" > src-tauri/build.rs \
     && cargo build --release --bin vod-worker \
-    && rm -rf crates/core/src crates/worker/src
+    && rm -rf crates/core/src crates/worker/src crates/core/build.rs
 
 COPY crates/core ./crates/core
 COPY crates/worker ./crates/worker
