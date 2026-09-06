@@ -7,13 +7,118 @@ use std::time::Instant;
 use tokio::sync::Semaphore;
 use url::Url;
 
+#[derive(Debug, Clone)]
+pub struct DownloadResult {
+    pub concat_file_path: PathBuf,
+    pub trim_start_offset: Option<f64>,
+    pub trim_duration: Option<f64>,
+    pub total_chunks: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SegmentInfo {
+    pub url: Url,
+    pub duration: f64,
+    pub start_time: f64,
+    pub end_time: f64,
+}
+
+pub fn parse_playlist_segments(body: &str, playlist_url: &str) -> Result<Vec<SegmentInfo>, AppError> {
+    let base_url = Url::parse(playlist_url)
+        .map_err(|e| AppError::Download(format!("Invalid playlist URL: {}", e)))?;
+
+    let mut segments = Vec::new();
+    let mut current_start = 0.0;
+    let mut pending_duration: Option<f64> = None;
+
+    for line in body.lines() {
+        let line = line.trim();
+        if line.starts_with("#EXTINF:") {
+            let dur_str = line
+                .trim_start_matches("#EXTINF:")
+                .split(',')
+                .next()
+                .unwrap_or("")
+                .trim();
+            if let Ok(d) = dur_str.parse::<f64>() {
+                pending_duration = Some(d);
+            }
+        } else if !line.starts_with('#') && !line.is_empty() {
+            let duration = pending_duration.take().unwrap_or(10.0);
+            let full_url = if line.starts_with("http://") || line.starts_with("https://") {
+                Url::parse(line).map_err(|e| AppError::Download(e.to_string()))?
+            } else {
+                base_url
+                    .join(line)
+                    .map_err(|e| AppError::Download(e.to_string()))?
+            };
+            let end_time = current_start + duration;
+            segments.push(SegmentInfo {
+                url: full_url,
+                duration,
+                start_time: current_start,
+                end_time,
+            });
+            current_start = end_time;
+        }
+    }
+
+    Ok(segments)
+}
+
+pub fn filter_segments_by_range(
+    segments: Vec<SegmentInfo>,
+    start_secs: Option<f64>,
+    end_secs: Option<f64>,
+) -> Result<(Vec<SegmentInfo>, Option<f64>, Option<f64>), AppError> {
+    if segments.is_empty() {
+        return Err(AppError::Download("No media segments found in sub-playlist".into()));
+    }
+
+    let start_limit = start_secs.unwrap_or(0.0).max(0.0);
+    let total_vod_duration = segments.last().map(|s| s.end_time).unwrap_or(0.0);
+    let end_limit = end_secs.unwrap_or(f64::MAX).min(total_vod_duration.max(start_limit));
+
+    if end_limit <= start_limit {
+        return Err(AppError::Download(format!(
+            "End time ({:.1}s) must be greater than start time ({:.1}s)",
+            end_limit, start_limit
+        )));
+    }
+
+    let is_trimmed = start_secs.is_some() || end_secs.is_some();
+    if !is_trimmed {
+        return Ok((segments, None, None));
+    }
+
+    let filtered: Vec<SegmentInfo> = segments
+        .into_iter()
+        .filter(|s| s.end_time > start_limit && s.start_time < end_limit)
+        .collect();
+
+    if filtered.is_empty() {
+        return Err(AppError::Download(format!(
+            "No video segments found in the range {:.1}s to {:.1}s",
+            start_limit, end_limit
+        )));
+    }
+
+    let first_chunk_start = filtered.first().map(|s| s.start_time).unwrap_or(0.0);
+    let trim_start_offset = (start_limit - first_chunk_start).max(0.0);
+    let trim_duration = (end_limit - start_limit).max(0.1);
+
+    Ok((filtered, Some(trim_start_offset), Some(trim_duration)))
+}
+
 pub async fn download_vod_chunks(
     reporter: DynReporter,
     vod_id: &str,
     playlist_url: &str,
     work_dir: &Path,
+    start_secs: Option<f64>,
+    end_secs: Option<f64>,
     is_cancelled: Arc<AtomicBool>,
-) -> Result<PathBuf, AppError> {
+) -> Result<DownloadResult, AppError> {
     tokio::fs::create_dir_all(work_dir).await?;
 
     let client = reqwest::Client::builder()
@@ -30,36 +135,41 @@ pub async fn download_vod_chunks(
     }
     let body = res.text().await?;
 
-    // 2. Parse chunk URLs
-    let base_url = Url::parse(playlist_url)
-        .map_err(|e| AppError::Download(format!("Invalid playlist URL: {}", e)))?;
+    // 2. Parse chunk URLs and filter by specified start/end range
+    let all_segments = parse_playlist_segments(&body, playlist_url)?;
+    let total_available_chunks = all_segments.len();
 
-    let mut chunk_urls = Vec::new();
-    for line in body.lines() {
-        let line = line.trim();
-        if !line.starts_with('#') && !line.is_empty() {
-            let full_url = if line.starts_with("http://") || line.starts_with("https://") {
-                Url::parse(line).map_err(|e| AppError::Download(e.to_string()))?
-            } else {
-                base_url
-                    .join(line)
-                    .map_err(|e| AppError::Download(e.to_string()))?
-            };
-            chunk_urls.push(full_url);
-        }
-    }
+    let (selected_segments, trim_start_offset, trim_duration) =
+        filter_segments_by_range(all_segments, start_secs, end_secs)?;
 
-    let total_chunks = chunk_urls.len();
+    let total_chunks = selected_segments.len();
     if total_chunks == 0 {
-        let err = "No media segments found in sub-playlist";
+        let err = "No media segments matched the selected range";
         reporter.report_log(vod_id, &format!("❌ {}", err));
         return Err(AppError::Download(err.into()));
     }
 
-    reporter.report_log(
-        vod_id,
-        &format!("Parsed playlist successfully: found {} video chunks to download.", total_chunks),
-    );
+    if start_secs.is_some() || end_secs.is_some() {
+        reporter.report_log(
+            vod_id,
+            &format!(
+                "Selective trimming active: downloading {} of {} chunks (range: {:.1}s - {:.1}s, duration: {:.1}s, offset: {:.2}s)",
+                total_chunks,
+                total_available_chunks,
+                start_secs.unwrap_or(0.0),
+                end_secs.unwrap_or(0.0),
+                trim_duration.unwrap_or(0.0),
+                trim_start_offset.unwrap_or(0.0),
+            ),
+        );
+    } else {
+        reporter.report_log(
+            vod_id,
+            &format!("Parsed playlist successfully: found {} video chunks to download.", total_chunks),
+        );
+    }
+
+    let chunk_urls: Vec<Url> = selected_segments.into_iter().map(|s| s.url).collect();
 
     let downloaded_count = Arc::new(AtomicUsize::new(0));
     let total_bytes = Arc::new(AtomicU64::new(0));
@@ -225,5 +335,79 @@ pub async fn download_vod_chunks(
         &format!("Concat list created at {}", concat_file_path.display()),
     );
 
-    Ok(concat_file_path)
+    Ok(DownloadResult {
+        concat_file_path,
+        trim_start_offset,
+        trim_duration,
+        total_chunks,
+    })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE_PLAYLIST: &str = r#"#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:10
+#EXTINF:10.000,
+chunk-0.ts
+#EXTINF:10.000,
+chunk-1.ts
+#EXTINF:10.000,
+chunk-2.ts
+#EXTINF:10.000,
+chunk-3.ts
+#EXTINF:5.500,
+chunk-4.ts
+#EXT-X-ENDLIST
+"#;
+
+    #[test]
+    fn test_parse_playlist_segments() {
+        let segments = parse_playlist_segments(SAMPLE_PLAYLIST, "https://example.com/vod/index.m3u8").unwrap();
+        assert_eq!(segments.len(), 5);
+        assert_eq!(segments[0].duration, 10.0);
+        assert_eq!(segments[0].start_time, 0.0);
+        assert_eq!(segments[0].end_time, 10.0);
+        assert_eq!(segments[4].duration, 5.5);
+        assert_eq!(segments[4].start_time, 40.0);
+        assert_eq!(segments[4].end_time, 45.5);
+    }
+
+    #[test]
+    fn test_filter_segments_untrimmed() {
+        let segments = parse_playlist_segments(SAMPLE_PLAYLIST, "https://example.com/vod/index.m3u8").unwrap();
+        let (filtered, offset, dur) = filter_segments_by_range(segments, None, None).unwrap();
+        assert_eq!(filtered.len(), 5);
+        assert!(offset.is_none());
+        assert!(dur.is_none());
+    }
+
+    #[test]
+    fn test_filter_segments_trimmed_middle() {
+        let segments = parse_playlist_segments(SAMPLE_PLAYLIST, "https://example.com/vod/index.m3u8").unwrap();
+        // Request 12.0s to 28.0s:
+        // Chunk 0 (0-10): end 10 <= 12 -> skipped
+        // Chunk 1 (10-20): overlaps [12, 28] -> kept
+        // Chunk 2 (20-30): overlaps [12, 28] -> kept
+        // Chunk 3 (30-40): start 30 >= 28 -> skipped
+        // Chunk 4 (40-45.5): skipped
+        let (filtered, offset, dur) = filter_segments_by_range(segments, Some(12.0), Some(28.0)).unwrap();
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].url.as_str(), "https://example.com/vod/chunk-1.ts");
+        assert_eq!(filtered[1].url.as_str(), "https://example.com/vod/chunk-2.ts");
+        // First kept chunk starts at 10.0s. Start limit is 12.0s. Relative offset = 12.0 - 10.0 = 2.0s
+        assert_eq!(offset, Some(2.0));
+        // Target duration = 28.0 - 12.0 = 16.0s
+        assert_eq!(dur, Some(16.0));
+    }
+
+    #[test]
+    fn test_filter_segments_invalid_range() {
+        let segments = parse_playlist_segments(SAMPLE_PLAYLIST, "https://example.com/vod/index.m3u8").unwrap();
+        let res = filter_segments_by_range(segments, Some(30.0), Some(20.0));
+        assert!(res.is_err());
+    }
+}
+

@@ -20,6 +20,8 @@ pub struct CompressionProgress {
     pub fps: f64,
     pub speed: String,
     pub size_bytes: u64,
+    #[serde(default)]
+    pub eta_seconds: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -16,6 +16,8 @@ pub struct PipelineConfig {
     pub preset: String,
     pub crf: u8,
     pub duration_secs: Option<f64>,
+    pub start_secs: Option<f64>,
+    pub end_secs: Option<f64>,
 
     // Configurable action destinations
     pub save_local: bool,
@@ -80,16 +82,18 @@ pub async fn run_archive_pipeline(
     reporter.report_stage(vod_id, "downloading", "Downloading video chunks from Twitch CDN...");
     reporter.report_log(vod_id, "Starting chunk download...");
 
-    let concat_file = match crate::downloader::download_vod_chunks(
+    let download_res = match crate::downloader::download_vod_chunks(
         reporter.clone(),
         vod_id,
         &config.playlist_url,
         &work_dir,
+        config.start_secs,
+        config.end_secs,
         is_cancelled.clone(),
     )
     .await
     {
-        Ok(f) => f,
+        Ok(res) => res,
         Err(e) => {
             reporter.report_log(vod_id, &format!("❌ Chunk download failed: {}", e));
             let _ = tokio::fs::remove_dir_all(&work_dir).await;
@@ -106,14 +110,18 @@ pub async fn run_archive_pipeline(
     // 2. Compress via FFmpeg
     reporter.report_stage(vod_id, "compressing", "Compressing video with FFmpeg...");
 
+    let effective_duration = download_res.trim_duration.or(config.duration_secs);
+
     if let Err(e) = crate::compressor::compress_vod(
         reporter.clone(),
         vod_id,
-        &concat_file,
+        &download_res.concat_file_path,
         &compressed_mp4,
         &config.preset,
         config.crf,
-        config.duration_secs,
+        effective_duration,
+        download_res.trim_start_offset,
+        download_res.trim_duration,
         is_cancelled.clone(),
     )
     .await
@@ -126,7 +134,7 @@ pub async fn run_archive_pipeline(
     // Clean up temporary chunks folder immediately to free disk space
     let chunks_dir = work_dir.join("chunks");
     let _ = tokio::fs::remove_dir_all(&chunks_dir).await;
-    let _ = tokio::fs::remove_file(&concat_file).await;
+    let _ = tokio::fs::remove_file(&download_res.concat_file_path).await;
     reporter.report_log(vod_id, "Cleaned up temporary chunk files to conserve disk space.");
 
     if is_cancelled.load(Ordering::Relaxed) {

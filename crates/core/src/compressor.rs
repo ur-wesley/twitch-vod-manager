@@ -108,6 +108,8 @@ async fn run_ffmpeg_compress_once(
     preset: &str,
     crf: u8,
     estimated_duration_secs: Option<f64>,
+    trim_start_secs: Option<f64>,
+    trim_duration_secs: Option<f64>,
     is_cancelled: Arc<AtomicBool>,
 ) -> Result<FfmpegExecutionResult, FfmpegExecutionError> {
     if let Some(parent) = output_mp4_path.parent() {
@@ -126,6 +128,17 @@ async fn run_ffmpeg_compress_once(
         concat_list_path.to_string_lossy().to_string(),
     ];
 
+    if let Some(ss) = trim_start_secs {
+        if ss > 0.05 {
+            args.push("-ss".into());
+            args.push(format!("{:.3}", ss));
+        }
+    }
+    if let Some(dur) = trim_duration_secs {
+        args.push("-t".into());
+        args.push(format!("{:.3}", dur));
+    }
+
     match preset {
         "passthrough" => {
             args.push("-c".into());
@@ -138,6 +151,38 @@ async fn run_ffmpeg_compress_once(
                 "-preset".into(),
                 "p5".into(),
                 "-cq".into(),
+                crf.to_string(),
+                "-c:a".into(),
+                "aac".into(),
+                "-b:a".into(),
+                "160k".into(),
+            ]);
+        }
+        "hevc_amf" => {
+            args.extend_from_slice(&[
+                "-c:v".into(),
+                "hevc_amf".into(),
+                "-quality".into(),
+                "quality".into(),
+                "-rc".into(),
+                "cqp".into(),
+                "-qp_p".into(),
+                crf.to_string(),
+                "-qp_i".into(),
+                crf.to_string(),
+                "-c:a".into(),
+                "aac".into(),
+                "-b:a".into(),
+                "160k".into(),
+            ]);
+        }
+        "hevc_qsv" => {
+            args.extend_from_slice(&[
+                "-c:v".into(),
+                "hevc_qsv".into(),
+                "-preset".into(),
+                "medium".into(),
+                "-global_quality".into(),
                 crf.to_string(),
                 "-c:a".into(),
                 "aac".into(),
@@ -229,7 +274,7 @@ async fn run_ffmpeg_compress_once(
     });
 
     let mut reader = BufReader::new(stdout).lines();
-    let total_secs = estimated_duration_secs.unwrap_or(0.0);
+    let total_secs = trim_duration_secs.or(estimated_duration_secs).unwrap_or(0.0);
 
     let mut current_fps = 0.0;
     let mut current_speed = "0x".to_string();
@@ -272,6 +317,18 @@ async fn run_ffmpeg_compress_once(
                         0.0
                     };
 
+                    let speed_mult = current_speed
+                        .trim_end_matches('x')
+                        .trim()
+                        .parse::<f64>()
+                        .unwrap_or(0.0);
+
+                    let eta_seconds = if speed_mult > 0.05 && total_secs > current_time_secs {
+                        ((total_secs - current_time_secs) / speed_mult).max(0.0) as u64
+                    } else {
+                        0
+                    };
+
                     reporter.report_compression(&CompressionProgress {
                         vod_id: vod_id.to_string(),
                         percent,
@@ -279,6 +336,7 @@ async fn run_ffmpeg_compress_once(
                         fps: current_fps,
                         speed: current_speed.clone(),
                         size_bytes: current_size,
+                        eta_seconds,
                     });
 
                     // Log milestone progress every 20%
@@ -287,8 +345,8 @@ async fn run_ffmpeg_compress_once(
                         reporter.report_log(
                             vod_id,
                             &format!(
-                                "Encoding progress: {:.1}% (speed: {}, fps: {:.0}, encoded: {:.0}s / {:.0}s)",
-                                percent, current_speed, current_fps, current_time_secs, total_secs
+                                "Encoding progress: {:.1}% (speed: {}, fps: {:.0}, encoded: {:.0}s / {:.0}s, ETA: {}s)",
+                                percent, current_speed, current_fps, current_time_secs, total_secs, eta_seconds
                             ),
                         );
                     }
@@ -309,13 +367,13 @@ async fn run_ffmpeg_compress_once(
     };
 
     if !status.success() {
-        let is_nvenc_failure = is_nvenc_failure_output(preset, &stderr_lines);
+        let is_hw_failure = is_hardware_failure_output(preset, &stderr_lines);
 
         return Err(FfmpegExecutionError::Failed {
             status_code: status.code(),
             command_args: args,
             stderr_lines,
-            is_nvenc_failure,
+            is_nvenc_failure: is_hw_failure,
         });
     }
 
@@ -336,6 +394,8 @@ pub async fn compress_vod(
     preset: &str,
     crf: u8,
     estimated_duration_secs: Option<f64>,
+    trim_start_secs: Option<f64>,
+    trim_duration_secs: Option<f64>,
     is_cancelled: Arc<AtomicBool>,
 ) -> Result<(), AppError> {
     let mut current_preset = preset.to_string();
@@ -348,6 +408,8 @@ pub async fn compress_vod(
         &current_preset,
         crf,
         estimated_duration_secs,
+        trim_start_secs,
+        trim_duration_secs,
         is_cancelled.clone(),
     )
     .await
@@ -369,17 +431,19 @@ pub async fn compress_vod(
                         let s = l.to_lowercase();
                         s.contains("nvenc")
                             || s.contains("cuda")
+                            || s.contains("amf")
+                            || s.contains("qsv")
                             || s.contains("driver")
                             || s.contains("encoder")
                     })
                     .cloned()
-                    .unwrap_or_else(|| "Host lacks NVIDIA GPU or CUDA driver".to_string());
+                    .unwrap_or_else(|| format!("Host lacks compatible GPU or drivers for '{}'", current_preset));
 
                 reporter.report_log(
                     vod_id,
                     &format!(
-                        "⚠️ Hardware encoder 'hevc_nvenc' failed: {}\nHost lacks NVIDIA GPU or CUDA drivers.",
-                        tail_err
+                        "⚠️ Hardware encoder '{}' failed: {}\nHost lacks compatible GPU or hardware encoder drivers.",
+                        current_preset, tail_err
                     ),
                 );
                 reporter.report_log(
@@ -396,6 +460,8 @@ pub async fn compress_vod(
                     &current_preset,
                     crf,
                     estimated_duration_secs,
+                    trim_start_secs,
+                    trim_duration_secs,
                     is_cancelled.clone(),
                 )
                 .await
@@ -443,9 +509,32 @@ pub async fn compress_vod(
         fps: res.fps,
         speed: res.speed,
         size_bytes: res.size_bytes,
+        eta_seconds: 0,
     });
 
     Ok(())
+}
+
+pub fn is_hardware_failure_output(preset: &str, stderr_lines: &[String]) -> bool {
+    match preset {
+        "hevc_nvenc" => is_nvenc_failure_output(preset, stderr_lines),
+        "hevc_amf" => stderr_lines.iter().any(|l| {
+            let s = l.to_lowercase();
+            s.contains("amf")
+                || s.contains("failed to initialize amf")
+                || s.contains("amf_error")
+                || s.contains("unknown encoder 'hevc_amf'")
+        }),
+        "hevc_qsv" => stderr_lines.iter().any(|l| {
+            let s = l.to_lowercase();
+            s.contains("qsv")
+                || s.contains("libmfx")
+                || s.contains("mfx")
+                || s.contains("error creating session")
+                || s.contains("unknown encoder 'hevc_qsv'")
+        }),
+        _ => false,
+    }
 }
 
 pub fn is_nvenc_failure_output(preset: &str, stderr_lines: &[String]) -> bool {
@@ -485,6 +574,15 @@ mod tests {
         // When stderr doesn't mention nvenc/cuda, should not trigger
         let normal_err = vec!["No such file or directory: concat_list.txt".to_string()];
         assert!(!is_nvenc_failure_output("hevc_nvenc", &normal_err));
+
+        // Test AMF and QSV failure detection
+        let amf_err = vec!["[hevc_amf @ 0x123] Failed to initialize AMF.".to_string()];
+        assert!(is_hardware_failure_output("hevc_amf", &amf_err));
+        assert!(!is_hardware_failure_output("hevc_nvenc", &amf_err));
+
+        let qsv_err = vec!["[hevc_qsv @ 0x123] Error creating session: libmfx not found".to_string()];
+        assert!(is_hardware_failure_output("hevc_qsv", &qsv_err));
+        assert!(!is_hardware_failure_output("hevc_amf", &qsv_err));
     }
 
     #[test]

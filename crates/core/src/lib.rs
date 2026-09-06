@@ -20,7 +20,7 @@ pub struct StorageQuota {
 }
 
 pub use compressor::{compress_vod, detect_ffmpeg, FfmpegInfo};
-pub use downloader::download_vod_chunks;
+pub use downloader::{download_vod_chunks, DownloadResult};
 pub use error::{AppError, StableError};
 pub use pipeline::{run_archive_pipeline, PipelineConfig, PipelineResult};
 pub use reporter::{
