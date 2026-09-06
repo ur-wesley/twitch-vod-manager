@@ -662,7 +662,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                     class="gap-1.5 text-xs"
                   >
                     <span
-                      class={`i-mdi-update size-3.5 ${checkingUpdates() ? "animate-spin" : ""}`}
+                      class={`${checkingUpdates() ? "i-mdi-loading animate-spin" : "i-mdi-update"} size-3.5`}
                       aria-hidden="true"
                     />
                     Check for updates
@@ -1013,7 +1013,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         class="text-xs font-bold gap-1.5 bg-amber-600 hover:bg-amber-700 text-white"
                       >
                         <span
-                          class={`iconify mdi--google-drive size-4 ${gdriveLoggingIn() ? "animate-spin" : ""}`}
+                          class={`iconify ${gdriveLoggingIn() ? "mdi--loading animate-spin" : "mdi--google-drive"} size-4`}
                         />
                         {gdriveLoggingIn()
                           ? "Waiting for Browser Auth..."
@@ -1178,7 +1178,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                       class="text-xs font-bold gap-1.5"
                     >
                       <span
-                        class={`iconify mdi--connection size-4 ${webdavTesting() ? "animate-spin" : ""}`}
+                        class={`iconify ${webdavTesting() ? "mdi--loading animate-spin" : "mdi--connection"} size-4`}
                       />
                       {webdavTesting() ? "Testing Connection..." : "Test WebDAV Connection"}
                     </Button>
@@ -1373,7 +1373,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                       class="bg-[#9146FF] hover:bg-[#772ce8] text-white font-bold gap-2 text-xs"
                     >
                       <span
-                        class={`iconify mdi--twitch size-4 ${twitchLoggingIn() ? "animate-spin" : ""}`}
+                        class={`iconify ${twitchLoggingIn() ? "mdi--loading animate-spin" : "mdi--twitch"} size-4`}
                       />
                       {formData().twitch_access_token ? "Re-auth Twitch" : "Login Twitch"}
                     </Button>
@@ -1385,7 +1385,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                       class="bg-red-600 hover:bg-red-700 text-white font-bold gap-2 text-xs"
                     >
                       <span
-                        class={`iconify mdi--youtube size-4 ${youtubeLoggingIn() ? "animate-spin" : ""}`}
+                        class={`iconify ${youtubeLoggingIn() ? "mdi--loading animate-spin" : "mdi--youtube"} size-4`}
                       />
                       {formData().youtube_access_token ? "Re-auth YouTube" : "Login YouTube"}
                     </Button>
@@ -1397,7 +1397,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                       class="bg-amber-600 hover:bg-amber-700 text-white font-bold gap-2 text-xs"
                     >
                       <span
-                        class={`iconify mdi--google-drive size-4 ${gdriveLoggingIn() ? "animate-spin" : ""}`}
+                        class={`iconify ${gdriveLoggingIn() ? "mdi--loading animate-spin" : "mdi--google-drive"} size-4`}
                       />
                       {formData().gdrive_access_token ? "Re-auth Drive" : "Connect Drive"}
                     </Button>
@@ -1459,7 +1459,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                           class="bg-[#9146FF] hover:bg-[#772ce8] text-white font-bold gap-2 text-xs"
                         >
                           <span
-                            class={`iconify mdi--twitch size-4 ${twitchLoggingIn() ? "animate-spin" : ""}`}
+                            class={`iconify ${twitchLoggingIn() ? "mdi--loading animate-spin" : "mdi--twitch"} size-4`}
                           />
                           {twitchLoggingIn()
                             ? "Opening Browser Auth..."
@@ -1606,7 +1606,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                           class="bg-red-600 hover:bg-red-700 text-white font-bold gap-2 text-xs"
                         >
                           <span
-                            class={`iconify mdi--youtube size-4 ${youtubeLoggingIn() ? "animate-spin" : ""}`}
+                            class={`iconify ${youtubeLoggingIn() ? "mdi--loading animate-spin" : "mdi--youtube"} size-4`}
                           />
                           {youtubeLoggingIn()
                             ? "Opening Browser Auth..."
@@ -1727,7 +1727,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                           class="bg-amber-600 hover:bg-amber-700 text-white font-bold gap-2 text-xs"
                         >
                           <span
-                            class={`iconify mdi--google-drive size-4 ${gdriveLoggingIn() ? "animate-spin" : ""}`}
+                            class={`iconify ${gdriveLoggingIn() ? "mdi--loading animate-spin" : "mdi--google-drive"} size-4`}
                           />
                           {gdriveLoggingIn()
                             ? "Opening Browser Auth..."
@@ -1835,7 +1835,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         class="gap-1.5 text-xs font-semibold"
                       >
                         <span
-                          class={`iconify mdi--lan-connect size-3.5 ${workerTesting() ? "animate-spin" : ""}`}
+                          class={`iconify ${workerTesting() ? "mdi--loading animate-spin" : "mdi--lan-connect"} size-3.5`}
                         />
                         {workerTesting() ? "Testing Connection..." : "Test Worker Connection"}
                       </Button>
@@ -1849,7 +1849,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         class="gap-1.5 text-xs font-semibold"
                       >
                         <span
-                          class={`iconify mdi--sync size-3.5 ${workerSyncing() ? "animate-spin" : ""}`}
+                          class={`iconify ${workerSyncing() ? "mdi--loading animate-spin" : "mdi--sync"} size-3.5`}
                         />
                         {workerSyncing() ? "Syncing..." : "Sync Settings to VPS"}
                       </Button>
