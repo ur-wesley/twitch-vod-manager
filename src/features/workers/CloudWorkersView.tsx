@@ -79,7 +79,7 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
         setIsOnline(false);
         setStatus(null);
         setLoadingStatus(false);
-      }
+      },
     );
   };
 
@@ -95,7 +95,7 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
       (err) => {
         setLoadingJobs(false);
         toast.error(`Failed to fetch VPS jobs: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -146,7 +146,7 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
       (err) => {
         setSyncing(false);
         toast.error(`Sync failed: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -166,7 +166,7 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
       (err) => {
         setCheckingWatcher(false);
         toast.error(`Watcher trigger failed: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -178,7 +178,7 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
         toast.info("Cancellation requested");
         fetchJobs();
       },
-      (err) => toast.error(err.message)
+      (err) => toast.error(err.message),
     );
   };
 
@@ -190,7 +190,7 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
         toast.success("Job record removed");
         fetchJobs();
       },
-      (err) => toast.error(err.message)
+      (err) => toast.error(err.message),
     );
   };
 
@@ -207,7 +207,7 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
       (err) => {
         setLoadingLogs(false);
         toast.error(`Failed to load logs: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -228,7 +228,7 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
       (err) => {
         toast.error(`Download failed: ${err.message}`);
         setDownloadingJobId(null);
-      }
+      },
     );
   };
 
@@ -280,7 +280,8 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
             Cloud Workers (Self-Hosted VPS)
           </h2>
           <p class="text-xs text-muted-foreground">
-            Execute VOD archiving and autonomous stream monitoring 24/7 on your own Virtual Private Server.
+            Execute VOD archiving and autonomous stream monitoring 24/7 on your own Virtual Private
+            Server.
           </p>
         </div>
 
@@ -322,7 +323,8 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
             <div>
               <h3 class="font-bold text-sm text-foreground">No VPS Worker Configured</h3>
               <p class="text-xs text-muted-foreground max-w-md mx-auto pt-1">
-                Configure your VPS worker URL and secret API key in Settings to offload stream downloads and run autonomous archiving.
+                Configure your VPS worker URL and secret API key in Settings to offload stream
+                downloads and run autonomous archiving.
               </p>
             </div>
             <div class="flex justify-center gap-2 pt-2">
@@ -330,7 +332,12 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
                 <span class="i-mdi-cog size-4" />
                 Configure Worker in Settings
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setGuideOpen(true)} class="gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setGuideOpen(true)}
+                class="gap-1.5"
+              >
                 <span class="i-mdi-help-circle size-4" />
                 How to Host on VPS
               </Button>
@@ -344,7 +351,9 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
             <CardHeader class="pb-2">
               <CardTitle class="text-xs text-muted-foreground flex items-center justify-between">
                 <span>Worker Connection</span>
-                <span class={`size-2.5 rounded-full ${isOnline() ? "bg-emerald-500 animate-pulse" : "bg-destructive"}`} />
+                <span
+                  class={`size-2.5 rounded-full ${isOnline() ? "bg-emerald-500 animate-pulse" : "bg-destructive"}`}
+                />
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -378,7 +387,11 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
                 <div class="text-sm font-bold text-foreground flex items-center justify-between">
                   <span>CPU: {Math.round(status()?.cpu_usage_percent || 0)}%</span>
                   <span>
-                    RAM: {Math.round(((status()?.memory_used_mb || 0) / (status()?.memory_total_mb || 1)) * 100)}%
+                    RAM:{" "}
+                    {Math.round(
+                      ((status()?.memory_used_mb || 0) / (status()?.memory_total_mb || 1)) * 100,
+                    )}
+                    %
                   </span>
                 </div>
                 <div class="text-[11px] text-muted-foreground pt-0.5 font-mono">
@@ -459,23 +472,36 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
               <div>
                 <span class="font-semibold text-foreground">Sync Credentials: </span>
                 <span class="text-muted-foreground">
-                  Push your Twitch tokens and S3 bucket credentials from this computer to the VPS worker.
+                  Push your Twitch tokens and S3 bucket credentials from this computer to the VPS
+                  worker.
                 </span>
               </div>
               <div class="flex flex-wrap items-center gap-1.5">
                 <span class="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mr-0.5">
                   On worker
                 </span>
-                <Badge variant={status()?.has_twitch ? "success" : "outline"} class="text-[10px] px-1.5 py-0">
+                <Badge
+                  variant={status()?.has_twitch ? "success" : "outline"}
+                  class="text-[10px] px-1.5 py-0"
+                >
                   Twitch {status()?.has_twitch ? "ready" : "missing"}
                 </Badge>
-                <Badge variant={status()?.has_s3 ? "success" : "outline"} class="text-[10px] px-1.5 py-0">
+                <Badge
+                  variant={status()?.has_s3 ? "success" : "outline"}
+                  class="text-[10px] px-1.5 py-0"
+                >
                   S3 {status()?.has_s3 ? "ready" : "missing"}
                 </Badge>
-                <Badge variant={status()?.has_gdrive ? "success" : "outline"} class="text-[10px] px-1.5 py-0">
+                <Badge
+                  variant={status()?.has_gdrive ? "success" : "outline"}
+                  class="text-[10px] px-1.5 py-0"
+                >
                   GDrive {status()?.has_gdrive ? "ready" : "missing"}
                 </Badge>
-                <Badge variant={status()?.has_webdav ? "success" : "outline"} class="text-[10px] px-1.5 py-0">
+                <Badge
+                  variant={status()?.has_webdav ? "success" : "outline"}
+                  class="text-[10px] px-1.5 py-0"
+                >
                   WebDAV {status()?.has_webdav ? "ready" : "missing"}
                 </Badge>
                 <Show when={!status() && isOnline() === false && !loadingStatus()}>
@@ -529,7 +555,10 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
                     <div class="space-y-1 min-w-0 flex-1">
                       <div class="flex items-center gap-2">
                         {formatStatusBadge(job.status)}
-                        <span class="font-semibold text-xs text-foreground truncate" title={job.title}>
+                        <span
+                          class="font-semibold text-xs text-foreground truncate"
+                          title={job.title}
+                        >
                           {job.title}
                         </span>
                         <span class="text-[10px] text-muted-foreground font-mono shrink-0">
@@ -538,7 +567,13 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
                       </div>
 
                       {/* Progress bar if active */}
-                      <Show when={job.status !== "completed" && job.status !== "failed" && job.status !== "cancelled"}>
+                      <Show
+                        when={
+                          job.status !== "completed" &&
+                          job.status !== "failed" &&
+                          job.status !== "cancelled"
+                        }
+                      >
                         <div class="space-y-1 pt-1 max-w-md">
                           <div class="flex justify-between text-[11px] text-muted-foreground font-mono">
                             <span>Stage: {job.stage}</span>
@@ -554,7 +589,14 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
                       </Show>
 
                       <Show when={job.error}>
-                        <p class="text-xs text-destructive pt-0.5 truncate">{job.error}</p>
+                        <p
+                          class="text-xs text-destructive pt-0.5 truncate cursor-pointer hover:underline flex items-center gap-1"
+                          title={`${job.error} (Click to view full execution logs)`}
+                          onClick={() => handleOpenLogs(job)}
+                        >
+                          <span class="i-mdi-alert-circle-outline size-3.5 shrink-0" />
+                          <span class="truncate">{job.error}</span>
+                        </p>
                       </Show>
 
                       <div class="flex items-center gap-3 text-[10px] text-muted-foreground pt-0.5">
@@ -600,7 +642,13 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
                       </Show>
 
                       {/* Cancel Active Job Button */}
-                      <Show when={job.status !== "completed" && job.status !== "failed" && job.status !== "cancelled"}>
+                      <Show
+                        when={
+                          job.status !== "completed" &&
+                          job.status !== "failed" &&
+                          job.status !== "cancelled"
+                        }
+                      >
                         <Button
                           variant="destructive"
                           size="sm"
@@ -632,16 +680,17 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
       </Show>
 
       {/* Logs Viewer Modal */}
-      <Dialog open={Boolean(selectedJobForLogs())} onOpenChange={(open) => !open && setSelectedJobForLogs(null)}>
+      <Dialog
+        open={Boolean(selectedJobForLogs())}
+        onOpenChange={(open) => !open && setSelectedJobForLogs(null)}
+      >
         <DialogContent class="sm:max-w-2xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle class="flex items-center gap-2 text-sm">
               <span class="i-mdi-script-text text-primary size-5" />
               VPS Execution Logs: #{selectedJobForLogs()?.vod_id}
             </DialogTitle>
-            <DialogDescription class="truncate">
-              {selectedJobForLogs()?.title}
-            </DialogDescription>
+            <DialogDescription class="truncate">{selectedJobForLogs()?.title}</DialogDescription>
           </DialogHeader>
 
           <div class="flex-1 overflow-y-auto p-3 rounded-lg bg-black/90 font-mono text-[11px] text-emerald-400 space-y-1 min-h-[300px] border border-border/40">
@@ -656,21 +705,55 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
             >
               <Show
                 when={logs().length > 0}
-                fallback={<div class="text-muted-foreground p-4 text-center">No logs recorded for this job.</div>}
+                fallback={
+                  <div class="text-muted-foreground p-4 text-center">
+                    No logs recorded for this job.
+                  </div>
+                }
               >
                 <For each={logs()}>
-                  {(l) => (
-                    <div class="leading-relaxed">
-                      <span class="text-muted-foreground mr-2">[{new Date(l.timestamp).toLocaleTimeString()}]</span>
-                      <span>{l.message}</span>
-                    </div>
-                  )}
+                  {(l) => {
+                    const isError = l.message.includes("❌") || l.message.toLowerCase().includes("failed") || l.message.toLowerCase().includes("error:");
+                    const isWarning = l.message.includes("⚠️") || l.message.toLowerCase().includes("warning");
+                    const isSuccess = l.message.includes("✅") || l.message.toLowerCase().includes("success");
+                    return (
+                      <div
+                        class={`leading-relaxed whitespace-pre-wrap break-words ${
+                          isError
+                            ? "text-rose-400 bg-rose-950/20 p-1 rounded"
+                            : isWarning
+                              ? "text-amber-300"
+                              : isSuccess
+                                ? "text-emerald-300 font-semibold"
+                                : "text-emerald-400"
+                        }`}
+                      >
+                        <span class="text-muted-foreground mr-2 select-none">
+                          [{new Date(l.timestamp).toLocaleTimeString()}]
+                        </span>
+                        <span>{l.message}</span>
+                      </div>
+                    );
+                  }}
                 </For>
               </Show>
             </Show>
           </div>
 
-          <DialogFooter>
+          <DialogFooter class="flex items-center justify-between sm:justify-between w-full">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={loadingLogs()}
+              onClick={() => {
+                const job = selectedJobForLogs();
+                if (job) handleOpenLogs(job);
+              }}
+              class="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
+            >
+              <span class={`i-mdi-refresh size-3.5 ${loadingLogs() ? "animate-spin" : ""}`} />
+              Refresh Logs
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setSelectedJobForLogs(null)}>
               Close
             </Button>
@@ -698,7 +781,8 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
                 Option 1: 1-Click Docker Compose (Recommended)
               </h4>
               <p class="text-muted-foreground">
-                In the repository's <code>crates/worker/</code> folder on your VPS, create a <code>docker-compose.yml</code> and run:
+                In the repository's <code>crates/worker/</code> folder on your VPS, create a{" "}
+                <code>docker-compose.yml</code> and run:
               </p>
               <div class="relative">
                 <pre class="p-3 rounded-lg bg-muted font-mono text-[11px] overflow-x-auto text-foreground">
@@ -725,7 +809,7 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
                 Install FFmpeg and run the compiled Rust binary as a background systemd service:
               </p>
               <pre class="p-3 rounded-lg bg-muted font-mono text-[11px] overflow-x-auto text-foreground">
-{`sudo apt update && sudo apt install -y ffmpeg
+                {`sudo apt update && sudo apt install -y ffmpeg
 cargo build --release -p vod-worker
 sudo cp target/release/vod-worker /usr/local/bin/
 sudo systemctl enable --now twitch-vod-worker`}
@@ -735,7 +819,9 @@ sudo systemctl enable --now twitch-vod-worker`}
             <div class="p-3 rounded-lg bg-primary/10 border border-primary/20 space-y-1">
               <p class="font-semibold text-foreground">Next Step:</p>
               <p class="text-muted-foreground">
-                Once the worker is running, enter its address (e.g. <code>http://YOUR_VPS_IP:8080</code>) and API Key in this app's <strong>Settings</strong> tab, then click <strong>"Sync Settings to VPS"</strong>.
+                Once the worker is running, enter its address (e.g.{" "}
+                <code>http://YOUR_VPS_IP:8080</code>) and API Key in this app's{" "}
+                <strong>Settings</strong> tab, then click <strong>"Sync Settings to VPS"</strong>.
               </p>
             </div>
           </div>

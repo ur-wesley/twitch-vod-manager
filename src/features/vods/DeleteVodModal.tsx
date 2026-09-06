@@ -37,7 +37,7 @@ export const DeleteVodModal: Component<DeleteVodModalProps> = (props) => {
       (err) => {
         setDeleting(false);
         setErrorMsg(err.message);
-      }
+      },
     );
   };
 
@@ -59,10 +59,14 @@ export const DeleteVodModal: Component<DeleteVodModalProps> = (props) => {
             <div class="flex items-center gap-3 p-2.5 rounded-lg border bg-muted/30">
               <Show
                 when={props.vod?.thumbnail_url}
-                fallback={<div class="w-16 h-10 rounded bg-muted flex items-center justify-center shrink-0" />}
+                fallback={
+                  <div class="w-16 h-10 rounded bg-muted flex items-center justify-center shrink-0" />
+                }
               >
                 <img
-                  src={props.vod?.thumbnail_url.replace("%{width}", "160").replace("%{height}", "90")}
+                  src={props.vod?.thumbnail_url
+                    .replace("%{width}", "160")
+                    .replace("%{height}", "90")}
                   alt={props.vod?.title}
                   class="w-16 h-10 object-cover rounded shrink-0"
                 />
@@ -78,7 +82,8 @@ export const DeleteVodModal: Component<DeleteVodModalProps> = (props) => {
             <div class="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-xs text-destructive flex items-start gap-2">
               <span class="i-mdi-alert-circle size-4 shrink-0 mt-0.5" />
               <span>
-                <strong>Warning:</strong> Deleting a VOD on Twitch is permanent and cannot be undone. Make sure you have archived it to Cloud Storage or downloaded a copy first.
+                <strong>Warning:</strong> Deleting a VOD on Twitch is permanent and cannot be
+                undone. Make sure you have archived it to Cloud Storage or downloaded a copy first.
               </span>
             </div>
 

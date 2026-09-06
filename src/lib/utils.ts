@@ -16,10 +16,7 @@ export function formatBytes(bytes: number, decimals = 2): string {
 
 export function formatDuration(duration: string): string {
   // Twitch duration format: "3h24m12s" or "45m10s" or "30s"
-  return duration
-    .replace("h", "h ")
-    .replace("m", "m ")
-    .trim();
+  return duration.replace("h", "h ").replace("m", "m ").trim();
 }
 
 export function formatDate(dateStr: string): string {

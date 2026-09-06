@@ -14,10 +14,16 @@ export const WindowTitleBar: Component<WindowTitleBarProps> = (props) => {
   onMount(() => {
     if (!isTauri()) return;
     const appWindow = getCurrentWindow();
-    appWindow.isMaximized().then(setMaximized).catch(() => {});
+    appWindow
+      .isMaximized()
+      .then(setMaximized)
+      .catch(() => {});
 
     const unlisten = appWindow.onResized(() => {
-      appWindow.isMaximized().then(setMaximized).catch(() => {});
+      appWindow
+        .isMaximized()
+        .then(setMaximized)
+        .catch(() => {});
     });
 
     onCleanup(() => {

@@ -70,7 +70,7 @@ export const MissingToolsModal: Component<MissingToolsModalProps> = (props) => {
         setDownloading(false);
         setErrorMsg(`Installation failed: ${err.message}`);
         toast.error(`FFmpeg download failed: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -105,10 +105,10 @@ export const MissingToolsModal: Component<MissingToolsModalProps> = (props) => {
                 },
                 (err) => {
                   toast.error(`Invalid FFmpeg binary: ${err.message}`);
-                }
+                },
               );
             },
-            (err) => toast.error(`Failed to save settings: ${err.message}`)
+            (err) => toast.error(`Failed to save settings: ${err.message}`),
           );
         }
       }
@@ -144,8 +144,9 @@ export const MissingToolsModal: Component<MissingToolsModalProps> = (props) => {
                 <p class="font-medium text-foreground">Why does Twitch VOD Manager need FFmpeg?</p>
                 <p>
                   Twitch broadcasts are streamed as thousands of individual video chunks. FFmpeg
-                  losslessly concatenates these chunks into a complete MP4 file and enables high-efficiency
-                  hardware-accelerated video compression (NVENC, QSV, AMF) to save 70%+ disk space.
+                  losslessly concatenates these chunks into a complete MP4 file and enables
+                  high-efficiency hardware-accelerated video compression (NVENC, QSV, AMF) to save
+                  70%+ disk space.
                 </p>
               </div>
             </div>

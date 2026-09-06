@@ -32,7 +32,7 @@ const mdiPlugin = plugin(({ matchComponents }) => {
     },
     {
       values,
-    }
+    },
   );
 });
 

@@ -21,7 +21,8 @@ export const MissingToolsBanner: Component<MissingToolsBannerProps> = (props) =>
               Missing Required Tool: <span class="font-mono font-bold text-white">FFmpeg</span>
             </p>
             <p class="text-[11px] text-amber-300/80 truncate">
-              Twitch VOD Manager requires FFmpeg to merge video segments, compress streams, and publish archives.
+              Twitch VOD Manager requires FFmpeg to merge video segments, compress streams, and
+              publish archives.
             </p>
           </div>
         </div>

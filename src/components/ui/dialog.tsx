@@ -6,9 +6,9 @@ import { cn } from "~/lib/utils";
 export const Dialog = DialogPrimitive;
 export const DialogTrigger = DialogPrimitive.Trigger;
 
-export const DialogPortal: Component<ComponentProps<typeof DialogPrimitive.Portal> & { children: JSX.Element }> = (
-  props
-) => {
+export const DialogPortal: Component<
+  ComponentProps<typeof DialogPrimitive.Portal> & { children: JSX.Element }
+> = (props) => {
   return (
     <DialogPrimitive.Portal>
       <div class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto">
@@ -24,7 +24,7 @@ export const DialogOverlay: Component<ComponentProps<typeof DialogPrimitive.Over
     <DialogPrimitive.Overlay
       class={cn(
         "fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity duration-200",
-        local.class
+        local.class,
       )}
       {...others}
     />
@@ -39,7 +39,7 @@ export const DialogContent: Component<ComponentProps<typeof DialogPrimitive.Cont
       <DialogPrimitive.Content
         class={cn(
           "relative z-50 grid w-full max-w-lg gap-4 border bg-background p-6 shadow-2xl rounded-2xl duration-200 sm:rounded-2xl",
-          local.class
+          local.class,
         )}
         {...others}
       >
@@ -74,7 +74,7 @@ export const DialogTitle: Component<ComponentProps<typeof DialogPrimitive.Title>
 };
 
 export const DialogDescription: Component<ComponentProps<typeof DialogPrimitive.Description>> = (
-  props
+  props,
 ) => {
   const [local, others] = splitProps(props, ["class"]);
   return (
@@ -89,10 +89,7 @@ export const DialogFooter: Component<ComponentProps<"div">> = (props) => {
   const [local, others] = splitProps(props, ["class"]);
   return (
     <div
-      class={cn(
-        "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 gap-2",
-        local.class
-      )}
+      class={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 gap-2", local.class)}
       {...others}
     />
   );

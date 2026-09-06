@@ -48,7 +48,7 @@ export const UpdateDialog: Component<UpdateDialogProps> = (props) => {
       (err) => {
         setInstalling(false);
         toast.error(err.message);
-      }
+      },
     );
   };
 
@@ -61,9 +61,7 @@ export const UpdateDialog: Component<UpdateDialogProps> = (props) => {
             Update available
           </DialogTitle>
           <Show when={props.updateInfo}>
-            {(info) => (
-              <DialogDescription>New version: v{info().version}</DialogDescription>
-            )}
+            {(info) => <DialogDescription>New version: v{info().version}</DialogDescription>}
           </Show>
         </DialogHeader>
 

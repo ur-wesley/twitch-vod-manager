@@ -50,8 +50,8 @@ export const PipelineMonitor: Component<PipelineMonitorProps> = (props) => {
               props.stage === "completed"
                 ? "success"
                 : props.stage === "idle"
-                ? "secondary"
-                : "default"
+                  ? "secondary"
+                  : "default"
             }
             class="capitalize text-xs font-medium"
           >
@@ -80,9 +80,11 @@ export const PipelineMonitor: Component<PipelineMonitorProps> = (props) => {
                 class={
                   props.stage === "downloading"
                     ? "i-mdi-download size-4 text-primary animate-bounce"
-                    : props.stage === "compressing" || props.stage === "uploading" || props.stage === "completed"
-                    ? "i-mdi-check-circle size-4 text-emerald-500"
-                    : "i-mdi-circle-outline size-4 text-muted-foreground"
+                    : props.stage === "compressing" ||
+                        props.stage === "uploading" ||
+                        props.stage === "completed"
+                      ? "i-mdi-check-circle size-4 text-emerald-500"
+                      : "i-mdi-circle-outline size-4 text-muted-foreground"
                 }
               />
               1. Download Stream Segments
@@ -100,9 +102,11 @@ export const PipelineMonitor: Component<PipelineMonitorProps> = (props) => {
             value={
               props.stage === "downloading"
                 ? props.downloadProgress?.percent || 0
-                : props.stage === "compressing" || props.stage === "uploading" || props.stage === "completed"
-                ? 100
-                : 0
+                : props.stage === "compressing" ||
+                    props.stage === "uploading" ||
+                    props.stage === "completed"
+                  ? 100
+                  : 0
             }
           />
         </div>
@@ -116,8 +120,8 @@ export const PipelineMonitor: Component<PipelineMonitorProps> = (props) => {
                   props.stage === "compressing"
                     ? "i-mdi-movie-filter size-4 text-primary animate-spin"
                     : props.stage === "uploading" || props.stage === "completed"
-                    ? "i-mdi-check-circle size-4 text-emerald-500"
-                    : "i-mdi-circle-outline size-4 text-muted-foreground"
+                      ? "i-mdi-check-circle size-4 text-emerald-500"
+                      : "i-mdi-circle-outline size-4 text-muted-foreground"
                 }
               />
               2. Video Compression & Optimization (FFmpeg)
@@ -136,8 +140,8 @@ export const PipelineMonitor: Component<PipelineMonitorProps> = (props) => {
               props.stage === "compressing"
                 ? props.compressionProgress?.percent || 0
                 : props.stage === "uploading" || props.stage === "completed"
-                ? 100
-                : 0
+                  ? 100
+                  : 0
             }
           />
         </div>
@@ -151,13 +155,15 @@ export const PipelineMonitor: Component<PipelineMonitorProps> = (props) => {
                   props.stage === "uploading"
                     ? "i-mdi-cloud-upload size-4 text-primary animate-pulse"
                     : props.stage === "completed"
-                    ? "i-mdi-check-circle size-4 text-emerald-500"
-                    : "i-mdi-circle-outline size-4 text-muted-foreground"
+                      ? "i-mdi-check-circle size-4 text-emerald-500"
+                      : "i-mdi-circle-outline size-4 text-muted-foreground"
                 }
               />
               3. Cloud Archival (S3 / Google Drive / WebDAV)
             </span>
-            <Show when={props.stage === "uploading" ? (props.s3Progress || props.driveProgress) : null}>
+            <Show
+              when={props.stage === "uploading" ? props.s3Progress || props.driveProgress : null}
+            >
               {(prog) => {
                 const p = prog();
                 return (
@@ -174,8 +180,8 @@ export const PipelineMonitor: Component<PipelineMonitorProps> = (props) => {
               props.stage === "uploading"
                 ? (props.s3Progress?.percent ?? props.driveProgress?.percent ?? 0)
                 : props.stage === "completed"
-                ? 100
-                : 0
+                  ? 100
+                  : 0
             }
           />
         </div>

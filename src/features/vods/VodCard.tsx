@@ -17,9 +17,7 @@ export interface VodCardProps {
 export const VodCard: Component<VodCardProps> = (props) => {
   // Format Twitch thumbnail template (%{width}x%{height})
   const thumbnailSrc = () =>
-    props.vod.thumbnail_url
-      .replace("%{width}", "480")
-      .replace("%{height}", "270");
+    props.vod.thumbnail_url.replace("%{width}", "480").replace("%{height}", "270");
 
   return (
     <Card class="overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md bg-card/60 backdrop-blur-xs flex flex-col">
@@ -31,7 +29,10 @@ export const VodCard: Component<VodCardProps> = (props) => {
           loading="lazy"
         />
         <div class="absolute bottom-2 right-2 flex items-center gap-1.5">
-          <Badge variant="default" class="bg-black/80 backdrop-blur-xs text-white text-[11px] px-1.5 py-0.5 border-0 font-mono">
+          <Badge
+            variant="default"
+            class="bg-black/80 backdrop-blur-xs text-white text-[11px] px-1.5 py-0.5 border-0 font-mono"
+          >
             {formatDuration(props.vod.duration)}
           </Badge>
         </div>

@@ -12,11 +12,7 @@ import {
 import { Input } from "~/components/ui/input";
 import { Progress } from "~/components/ui/progress";
 import { formatBytes, formatSpeed } from "~/lib/utils";
-import {
-  loginYouTube,
-  onYouTubeUploadProgress,
-  publishToYouTube,
-} from "~/services/tauri";
+import { loginYouTube, onYouTubeUploadProgress, publishToYouTube } from "~/services/tauri";
 import type { YouTubeUploadProgress } from "~/types";
 
 export interface YouTubePublishModalProps {
@@ -74,7 +70,7 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
     setConnecting(false);
     res.match(
       () => props.onYouTubeConnected(),
-      (err) => setErrorMsg(err.message)
+      (err) => setErrorMsg(err.message),
     );
   };
 
@@ -105,7 +101,7 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
       (err) => {
         setErrorMsg(err.message);
         setUploading(false);
-      }
+      },
     );
   };
 
@@ -203,7 +199,9 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
                   <select
                     class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     value={privacy()}
-                    onChange={(e) => setPrivacy(e.currentTarget.value as "private" | "public" | "unlisted")}
+                    onChange={(e) =>
+                      setPrivacy(e.currentTarget.value as "private" | "public" | "unlisted")
+                    }
                     disabled={uploading()}
                   >
                     <option value="unlisted">Unlisted (Archive)</option>

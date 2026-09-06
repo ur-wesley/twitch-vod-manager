@@ -37,6 +37,7 @@ export interface ArchiveModalProps {
   defaultPreset?: string;
   defaultCrf?: number;
   hasWorkerConfigured?: boolean;
+  currentUserId?: string;
 }
 
 export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
@@ -53,6 +54,8 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
   const [saveLocal, setSaveLocal] = createSignal(true);
   const [uploadToYouTube, setUploadToYouTube] = createSignal(false);
   const [deleteFromTwitch, setDeleteFromTwitch] = createSignal(false);
+  const isOwnVod = () =>
+    !props.currentUserId || !props.vod?.user_id || props.vod.user_id === props.currentUserId;
 
   // YouTube Metadata
   const [ytTitle, setYtTitle] = createSignal("");
@@ -87,7 +90,7 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
         (err) => {
           setErrorMsg(err.message);
           setLoadingQualities(false);
-        }
+        },
       );
     }
   });
@@ -205,7 +208,8 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
                 <For each={qualities()}>
                   {(q) => (
                     <option value={q.url}>
-                      {q.name} {q.resolution ? `(${q.resolution}${q.fps ? ` @ ${q.fps}fps` : ""})` : ""}
+                      {q.name}{" "}
+                      {q.resolution ? `(${q.resolution}${q.fps ? ` @ ${q.fps}fps` : ""})` : ""}
                     </option>
                   )}
                 </For>
@@ -251,7 +255,9 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
 
           {/* Configurable Destinations */}
           <div class="space-y-2 pt-2 border-t border-border/50">
-            <label class="text-xs font-semibold text-foreground">Archival Destinations & Actions</label>
+            <label class="text-xs font-semibold text-foreground">
+              Archival Destinations & Actions
+            </label>
 
             {/* S3 Storage */}
             <label class="flex items-center gap-2 text-xs font-medium cursor-pointer select-none">
@@ -327,7 +333,9 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
               <Show when={uploadToYouTube()}>
                 <div class="ml-6 p-2.5 rounded-lg border bg-muted/30 space-y-2">
                   <div class="space-y-1">
-                    <label class="text-[11px] font-semibold text-foreground">YouTube Video Title</label>
+                    <label class="text-[11px] font-semibold text-foreground">
+                      YouTube Video Title
+                    </label>
                     <Input
                       value={ytTitle()}
                       onInput={(e) => setYtTitle(e.currentTarget.value)}
@@ -338,11 +346,15 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
 
                   <div class="grid grid-cols-2 gap-2">
                     <div class="space-y-1">
-                      <label class="text-[11px] font-semibold text-foreground">Privacy Status</label>
+                      <label class="text-[11px] font-semibold text-foreground">
+                        Privacy Status
+                      </label>
                       <select
                         class="flex h-8 w-full rounded-md border border-input bg-background px-2 py-0.5 text-xs shadow-sm"
                         value={ytPrivacy()}
-                        onChange={(e) => setYtPrivacy(e.currentTarget.value as "private" | "unlisted" | "public")}
+                        onChange={(e) =>
+                          setYtPrivacy(e.currentTarget.value as "private" | "unlisted" | "public")
+                        }
                       >
                         <option value="unlisted">Unlisted</option>
                         <option value="private">Private</option>
@@ -351,7 +363,9 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
                     </div>
 
                     <div class="space-y-1">
-                      <label class="text-[11px] font-semibold text-foreground">Tags (comma-separated)</label>
+                      <label class="text-[11px] font-semibold text-foreground">
+                        Tags (comma-separated)
+                      </label>
                       <Input
                         value={ytTags()}
                         onInput={(e) => setYtTags(e.currentTarget.value)}
@@ -366,21 +380,38 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
 
             {/* Delete from Twitch */}
             <div class="pt-1">
-              <label class="flex items-center gap-2 text-xs font-medium text-destructive cursor-pointer select-none">
+              <label
+                class={`flex items-center gap-2 text-xs font-medium select-none ${
+                  isOwnVod()
+                    ? "text-destructive cursor-pointer"
+                    : "text-muted-foreground opacity-60 cursor-not-allowed"
+                }`}
+              >
                 <input
                   type="checkbox"
-                  checked={deleteFromTwitch()}
+                  disabled={!isOwnVod()}
+                  checked={isOwnVod() && deleteFromTwitch()}
                   onChange={(e) => setDeleteFromTwitch(e.currentTarget.checked)}
-                  class="rounded border-destructive text-destructive focus:ring-destructive size-4"
+                  class="rounded border-destructive text-destructive focus:ring-destructive size-4 disabled:opacity-50"
                 />
                 <span class="flex items-center gap-1.5">
                   <span class="i-mdi-delete-clock size-4" />
                   Delete from Twitch once successfully archived
                 </span>
               </label>
-              <p class="text-[10px] text-muted-foreground ml-6 pt-0.5">
-                Automatically frees up channel VOD space on Twitch after all selected uploads succeed.
-              </p>
+              <Show
+                when={isOwnVod()}
+                fallback={
+                  <p class="text-[10px] text-amber-500/90 ml-6 pt-0.5">
+                    Only broadcasts from your own authenticated channel can be deleted from Twitch.
+                  </p>
+                }
+              >
+                <p class="text-[10px] text-muted-foreground ml-6 pt-0.5">
+                  Automatically frees up channel VOD space on Twitch after all selected uploads
+                  succeed.
+                </p>
+              </Show>
             </div>
           </div>
         </div>

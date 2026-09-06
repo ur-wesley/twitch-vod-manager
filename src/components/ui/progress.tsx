@@ -12,15 +12,12 @@ export const Progress: Component<ProgressProps> = (props) => {
 
   return (
     <div
-      class={cn(
-        "relative h-2 w-full overflow-hidden rounded-full bg-secondary/50",
-        props.class
-      )}
+      class={cn("relative h-2 w-full overflow-hidden rounded-full bg-secondary/50", props.class)}
     >
       <div
         class={cn(
           "h-full w-full flex-1 bg-primary transition-all duration-300 ease-out",
-          props.indicatorClass
+          props.indicatorClass,
         )}
         style={{ transform: `translateX(-${100 - percentage()}%)` }}
       />

@@ -8,7 +8,7 @@ export const Card: Component<ComponentProps<"div">> = (props) => {
     <div
       class={cn(
         "rounded-xl border bg-card text-card-foreground shadow-sm transition-all",
-        local.class
+        local.class,
       )}
       {...others}
     />
@@ -17,9 +17,7 @@ export const Card: Component<ComponentProps<"div">> = (props) => {
 
 export const CardHeader: Component<ComponentProps<"div">> = (props) => {
   const [local, others] = splitProps(props, ["class"]);
-  return (
-    <div class={cn("flex flex-col space-y-1.5 p-5", local.class)} {...others} />
-  );
+  return <div class={cn("flex flex-col space-y-1.5 p-5", local.class)} {...others} />;
 };
 
 export const CardTitle: Component<ComponentProps<"h3">> = (props) => {
@@ -34,9 +32,7 @@ export const CardTitle: Component<ComponentProps<"h3">> = (props) => {
 
 export const CardDescription: Component<ComponentProps<"p">> = (props) => {
   const [local, others] = splitProps(props, ["class"]);
-  return (
-    <p class={cn("text-sm text-muted-foreground", local.class)} {...others} />
-  );
+  return <p class={cn("text-sm text-muted-foreground", local.class)} {...others} />;
 };
 
 export const CardContent: Component<ComponentProps<"div">> = (props) => {
@@ -46,7 +42,5 @@ export const CardContent: Component<ComponentProps<"div">> = (props) => {
 
 export const CardFooter: Component<ComponentProps<"div">> = (props) => {
   const [local, others] = splitProps(props, ["class"]);
-  return (
-    <div class={cn("flex items-center p-5 pt-0", local.class)} {...others} />
-  );
+  return <div class={cn("flex items-center p-5 pt-0", local.class)} {...others} />;
 };

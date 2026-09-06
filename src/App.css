@@ -82,9 +82,16 @@
   body {
     @apply bg-background text-foreground antialiased selection:bg-primary/30;
     font-family: var(--font-sans);
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
   }
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-family: var(--font-heading);
   }
 }
@@ -115,7 +122,10 @@
   -webkit-backdrop-filter: blur(12px);
 }
 
-[data-sonner-toaster] [data-sonner-toast][data-styled="true"]:not([data-type="success"]):not([data-type="info"]):not([data-type="warning"]):not([data-type="error"]) {
+[data-sonner-toaster]
+  [data-sonner-toast][data-styled="true"]:not([data-type="success"]):not([data-type="info"]):not(
+    [data-type="warning"]
+  ):not([data-type="error"]) {
   background: color-mix(in oklch, var(--normal-bg) 85%, transparent) !important;
 }
 
