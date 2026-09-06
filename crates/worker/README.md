@@ -9,19 +9,23 @@ Works 24/7 in the background on your VPS **even when the desktop app is closed o
 ## ⚡ Quick Start with Docker (Recommended)
 
 ### 1. Clone or copy repository to your VPS
+
 ```bash
 git clone https://github.com/your-username/twitch-vod-manager.git
 cd twitch-vod-manager/crates/worker
 ```
 
 ### 2. Configure Environment
+
 Copy `.env.example` to `.env` and set a secure `WORKER_API_KEY`:
+
 ```bash
 cp .env.example .env
 nano .env
 ```
 
 ### 3. Start the Worker
+
 ```bash
 docker compose up -d --build
 ```
@@ -46,19 +50,23 @@ Production worker on the netcup Dokploy instance.
 ## 💻 Native Linux / Systemd Setup (Without Docker)
 
 ### 1. Install prerequisites
+
 ```bash
 sudo apt update
 sudo apt install -y ffmpeg curl build-essential
 ```
 
 ### 2. Compile release binary
+
 ```bash
 cargo build --release -p vod-worker
 sudo cp ../../target/release/vod-worker /usr/local/bin/
 ```
 
 ### 3. Create Systemd Service
+
 Create `/etc/systemd/system/twitch-vod-worker.service`:
+
 ```ini
 [Unit]
 Description=Twitch VOD Cloud Worker
@@ -79,6 +87,7 @@ WantedBy=multi-user.target
 ```
 
 Enable and start the service:
+
 ```bash
 sudo mkdir -p /var/lib/twitch-vod-worker
 sudo chown -R ubuntu:ubuntu /var/lib/twitch-vod-worker
@@ -102,6 +111,7 @@ sudo systemctl enable --now twitch-vod-worker
 ## 🤖 Autonomous Channel Watcher
 
 The worker includes an autonomous background watcher. Once credentials are synced:
+
 - Turn on **"Auto-Archive Channel"** in the worker settings.
 - The worker periodically checks Twitch for newly ended broadcasts.
 - When you finish streaming on Twitch, the VPS worker detects the new VOD, downloads it at datacenter speeds, compresses it with FFmpeg, and uploads it to your S3 bucket (or YouTube) automatically.

@@ -15,6 +15,7 @@
 ### Task 1: Settings field (core + tauri + TS)
 
 **Files:**
+
 - Modify: `crates/core/src/settings.rs`
 - Modify: `src-tauri/src/modules/settings.rs`
 - Modify: `src/types/index.ts`
@@ -25,6 +26,7 @@
 ### Task 2: Worker quota helpers + status + sync + gate
 
 **Files:**
+
 - Modify: `crates/worker/src/api/mod.rs`
 - Modify: `crates/worker/src/watcher.rs`
 
@@ -38,6 +40,7 @@
 ### Task 3: Desktop sync + UI
 
 **Files:**
+
 - Modify: `src-tauri/src/commands/mod.rs` (`worker_sync_settings` payload)
 - Modify: `src/features/settings/SettingsView.tsx`
 - Modify: `src/features/workers/CloudWorkersView.tsx`

@@ -29,11 +29,11 @@ Cloud upload destinations (S3, GDrive, WebDAV, YouTube) already work via job fla
 
 ### Quota math
 
-| Field | Meaning |
-|-------|---------|
-| `storage_max_gb` | Configured cap (from settings / sync; default 100) |
-| `storage_used_gb` | Sum of file sizes in `{DATA_DIR}/completed` / 1e9 |
-| `storage_free_gb` | `max(0, storage_max_gb − storage_used_gb)` |
+| Field             | Meaning                                            |
+| ----------------- | -------------------------------------------------- |
+| `storage_max_gb`  | Configured cap (from settings / sync; default 100) |
+| `storage_used_gb` | Sum of file sizes in `{DATA_DIR}/completed` / 1e9  |
+| `storage_free_gb` | `max(0, storage_max_gb − storage_used_gb)`         |
 
 Existing `disk_total_gb` / `disk_free_gb` (host mount) remain unchanged and stay secondary in UI.
 
@@ -42,7 +42,7 @@ Existing `disk_total_gb` / `disk_free_gb` (host mount) remain unchanged and stay
 - When `storage_used_gb >= storage_max_gb`, refuse new jobs.
 - API: `POST` create-job returns **507 Insufficient Storage** with a clear JSON/message body (used, max, free).
 - Auto-watcher: do not start a new archive when over quota; log reason.
-- Jobs already queued or running may finish and increase used further; only *new* accepts are blocked.
+- Jobs already queued or running may finish and increase used further; only _new_ accepts are blocked.
 - No preflight estimate of VOD size — gate is current completed usage only.
 
 ### Config defaults / validation
