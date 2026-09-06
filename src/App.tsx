@@ -692,7 +692,21 @@ export const App: Component = () => {
     return inS3 || inGdrive || inWebdav;
   };
 
+  const canDeleteVod = (vod: TwitchVod): boolean => {
+    const user = twitchUser();
+    if (!user || !settings()?.twitch_access_token) return false;
+    if (vod.user_id !== user.id) return false;
+    if (user.scopes && user.scopes.length > 0 && !user.scopes.includes("channel:manage:videos")) {
+      return false;
+    }
+    return true;
+  };
+
   const handleOpenDeleteModal = (vod: TwitchVod) => {
+    if (!canDeleteVod(vod)) {
+      toast.error("You do not have permission to delete this VOD from Twitch.");
+      return;
+    }
     setSelectedVodForDelete(vod);
     setDeleteModalOpen(true);
   };
@@ -1251,6 +1265,7 @@ export const App: Component = () => {
                           vod={vod}
                           isArchived={isVodArchived(vod.id)}
                           onSelect={handleSelectVodForArchive}
+                          canDelete={canDeleteVod(vod)}
                           onDelete={handleOpenDeleteModal}
                           isProcessing={pipelineStage() !== "idle" && activeVodId() === vod.id}
                         />
@@ -1365,6 +1380,7 @@ export const App: Component = () => {
         hasWebdavConfigured={Boolean(settings()?.webdav_endpoint)}
         hasYouTubeConfigured={Boolean(settings()?.youtube_access_token)}
         currentUserId={twitchUser()?.id}
+        canDeleteVod={selectedVodForArchive() ? canDeleteVod(selectedVodForArchive()!) : false}
         localHardware={systemHardware()}
         workerUrl={settings()?.worker_url}
         workerApiKey={settings()?.worker_api_key}

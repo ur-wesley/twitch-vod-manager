@@ -41,3 +41,4 @@ bun.lockb
 
 *.key
 *.key.pub
+graphify-out/cache/

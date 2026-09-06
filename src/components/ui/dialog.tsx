@@ -11,7 +11,7 @@ export const DialogPortal: Component<
 > = (props) => {
   return (
     <DialogPrimitive.Portal>
-      <div class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto">
+      <div class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4 sm:p-6">
         {props.children}
       </div>
     </DialogPrimitive.Portal>
@@ -38,7 +38,7 @@ export const DialogContent: Component<ComponentProps<typeof DialogPrimitive.Cont
       <DialogOverlay />
       <DialogPrimitive.Content
         class={cn(
-          "relative z-50 grid w-full max-w-lg gap-4 border bg-background p-6 shadow-2xl rounded-2xl duration-200 sm:rounded-2xl",
+          "relative z-50 my-auto grid w-full max-w-lg gap-4 border bg-background p-6 shadow-2xl rounded-2xl duration-200 sm:rounded-2xl max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] overflow-y-auto",
           local.class,
         )}
         {...others}
@@ -89,7 +89,7 @@ export const DialogFooter: Component<ComponentProps<"div">> = (props) => {
   const [local, others] = splitProps(props, ["class"]);
   return (
     <div
-      class={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 gap-2", local.class)}
+      class={cn("flex flex-col-reverse sm:flex-row sm:justify-end gap-2", local.class)}
       {...others}
     />
   );

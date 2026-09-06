@@ -3,6 +3,7 @@ export interface TwitchUser {
   login: string;
   display_name: string;
   profile_image_url: string;
+  scopes?: string[];
 }
 
 export interface TwitchVod {

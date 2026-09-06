@@ -57,6 +57,7 @@ export interface ArchiveModalProps {
   hasWebdavConfigured?: boolean;
   hasYouTubeConfigured?: boolean;
   currentUserId?: string;
+  canDeleteVod?: boolean;
   localHardware?: SystemHardwareInfo | null;
   workerStatus?: WorkerStatus | null;
   workerUrl?: string;
@@ -123,11 +124,13 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
   const [uploadToYouTube, setUploadToYouTube] = createSignal(false);
   const [deleteFromTwitch, setDeleteFromTwitch] = createSignal(false);
   const isOwnVod = () =>
-    Boolean(
-      props.currentUserId &&
-      props.vod?.user_id &&
-      props.vod.user_id === props.currentUserId
-    );
+    props.canDeleteVod !== undefined
+      ? props.canDeleteVod
+      : Boolean(
+          props.currentUserId &&
+          props.vod?.user_id &&
+          props.vod.user_id === props.currentUserId
+        );
 
   // Trimming & Preview state
   const [showPreview, setShowPreview] = createSignal(true);

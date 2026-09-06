@@ -10,6 +10,7 @@ export interface VodCardProps {
   vod: TwitchVod;
   onSelect: (vod: TwitchVod) => void;
   onDelete?: (vod: TwitchVod) => void;
+  canDelete?: boolean;
   isProcessing?: boolean;
   isArchived?: boolean;
 }
@@ -93,7 +94,7 @@ export const VodCard: Component<VodCardProps> = (props) => {
             Archive VOD
           </Button>
 
-          <Show when={props.onDelete}>
+          <Show when={props.canDelete && props.onDelete}>
             <button
               type="button"
               onClick={() => props.onDelete?.(props.vod)}

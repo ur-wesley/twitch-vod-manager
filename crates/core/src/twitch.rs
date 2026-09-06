@@ -10,6 +10,8 @@ pub struct TwitchUser {
     pub login: String,
     pub display_name: String,
     pub profile_image_url: String,
+    #[serde(default)]
+    pub scopes: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -324,11 +326,34 @@ pub async fn get_user_info(client_id: &str, access_token: &str) -> Result<Twitch
         AppError::Twitch("No user returned from Twitch API".to_string())
     })?;
 
+    let scopes: Vec<String> = {
+        let val_res = client
+            .get("https://id.twitch.tv/oauth2/validate")
+            .header("Authorization", format!("OAuth {}", access_token))
+            .send()
+            .await;
+        if let Ok(resp) = val_res {
+            if resp.status().is_success() {
+                #[derive(Deserialize)]
+                struct ValidateResponse {
+                    #[serde(default)]
+                    scopes: Vec<String>,
+                }
+                resp.json::<ValidateResponse>().await.map(|v| v.scopes).unwrap_or_default()
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        }
+    };
+
     Ok(TwitchUser {
         id: user.id,
         login: user.login,
         display_name: user.display_name,
         profile_image_url: user.profile_image_url,
+        scopes,
     })
 }
 
@@ -357,6 +382,7 @@ pub async fn get_user_by_login(client_id: &str, access_token: &str, login: &str)
         login: user.login,
         display_name: user.display_name,
         profile_image_url: user.profile_image_url,
+        scopes: Vec::new(),
     })
 }
 
@@ -385,6 +411,7 @@ pub async fn get_user_by_id(client_id: &str, access_token: &str, id: &str) -> Re
         login: user.login,
         display_name: user.display_name,
         profile_image_url: user.profile_image_url,
+        scopes: Vec::new(),
     })
 }
 
