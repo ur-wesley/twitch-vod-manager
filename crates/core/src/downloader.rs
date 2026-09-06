@@ -21,12 +21,12 @@ pub async fn download_vod_chunks(
         .build()?;
 
     // 1. Fetch quality sub-playlist
+    reporter.report_log(vod_id, &format!("Fetching playlist manifest: {}", playlist_url));
     let res = client.get(playlist_url).send().await?;
     if !res.status().is_success() {
-        return Err(AppError::Download(format!(
-            "Failed to fetch sub-playlist: status {}",
-            res.status()
-        )));
+        let err = format!("Failed to fetch sub-playlist: status {}", res.status());
+        reporter.report_log(vod_id, &format!("❌ {}", err));
+        return Err(AppError::Download(err));
     }
     let body = res.text().await?;
 
@@ -51,10 +51,15 @@ pub async fn download_vod_chunks(
 
     let total_chunks = chunk_urls.len();
     if total_chunks == 0 {
-        return Err(AppError::Download(
-            "No media segments found in sub-playlist".into(),
-        ));
+        let err = "No media segments found in sub-playlist";
+        reporter.report_log(vod_id, &format!("❌ {}", err));
+        return Err(AppError::Download(err.into()));
     }
+
+    reporter.report_log(
+        vod_id,
+        &format!("Parsed playlist successfully: found {} video chunks to download.", total_chunks),
+    );
 
     let downloaded_count = Arc::new(AtomicUsize::new(0));
     let total_bytes = Arc::new(AtomicU64::new(0));
@@ -114,10 +119,12 @@ pub async fn download_vod_chunks(
             }
 
             if bytes_data.is_empty() {
-                return Err(AppError::Download(format!(
+                let err_msg = format!(
                     "Failed to download chunk {} after 3 attempts: {}",
                     index, last_err
-                )));
+                );
+                reporter.report_log(&vod_id, &format!("❌ {}", err_msg));
+                return Err(AppError::Download(err_msg));
             }
 
             tokio::fs::write(&chunk_path, &bytes_data).await?;
@@ -153,6 +160,19 @@ pub async fn download_vod_chunks(
                     speed_mbps,
                     eta_seconds,
                 });
+
+                // Milestone log in history at ~25% intervals
+                if current_downloaded == total_chunks
+                    || (total_chunks >= 4 && current_downloaded % (total_chunks / 4) == 0)
+                {
+                    reporter.report_log(
+                        &vod_id,
+                        &format!(
+                            "Download progress: {:.1}% ({}/{} chunks, {:.1} MB/s, ETA: {}s)",
+                            percent, current_downloaded, total_chunks, speed_mbps, eta_seconds
+                        ),
+                    );
+                }
             }
 
             Ok(())
@@ -166,14 +186,30 @@ pub async fn download_vod_chunks(
         match handle.await {
             Ok(Ok(())) => {}
             Ok(Err(AppError::Cancelled)) => return Err(AppError::Cancelled),
-            Ok(Err(e)) => return Err(e),
-            Err(e) => return Err(AppError::Download(format!("Task panicked: {}", e))),
+            Ok(Err(e)) => {
+                reporter.report_log(vod_id, &format!("❌ Chunk download task failed: {}", e));
+                return Err(e);
+            }
+            Err(e) => {
+                let err_msg = format!("Task panicked: {}", e);
+                reporter.report_log(vod_id, &format!("❌ {}", err_msg));
+                return Err(AppError::Download(err_msg));
+            }
         }
     }
 
     if is_cancelled.load(Ordering::Relaxed) {
         return Err(AppError::Cancelled);
     }
+
+    reporter.report_log(
+        vod_id,
+        &format!(
+            "All {} chunks downloaded successfully ({:.2} MB). Creating concat list...",
+            total_chunks,
+            total_bytes.load(Ordering::Relaxed) as f64 / 1_000_000.0
+        ),
+    );
 
     // 3. Write concat list file for FFmpeg
     let concat_file_path = work_dir.join("concat_list.txt");
@@ -183,6 +219,11 @@ pub async fn download_vod_chunks(
         concat_content.push_str(&format!("file '{}'\n", chunk_file_name));
     }
     tokio::fs::write(&concat_file_path, concat_content).await?;
+
+    reporter.report_log(
+        vod_id,
+        &format!("Concat list created at {}", concat_file_path.display()),
+    );
 
     Ok(concat_file_path)
 }

@@ -91,25 +91,20 @@ pub async fn run_archive_pipeline(
     {
         Ok(f) => f,
         Err(e) => {
+            reporter.report_log(vod_id, &format!("❌ Chunk download failed: {}", e));
             let _ = tokio::fs::remove_dir_all(&work_dir).await;
             return Err(e);
         }
     };
 
     if is_cancelled.load(Ordering::Relaxed) {
+        reporter.report_log(vod_id, "⚠️ Pipeline cancelled after chunk download.");
         let _ = tokio::fs::remove_dir_all(&work_dir).await;
         return Err(AppError::Cancelled);
     }
 
     // 2. Compress via FFmpeg
     reporter.report_stage(vod_id, "compressing", "Compressing video with FFmpeg...");
-    reporter.report_log(
-        vod_id,
-        &format!(
-            "Running FFmpeg encoder: preset={}, crf={}",
-            config.preset, config.crf
-        ),
-    );
 
     if let Err(e) = crate::compressor::compress_vod(
         reporter.clone(),
@@ -123,6 +118,7 @@ pub async fn run_archive_pipeline(
     )
     .await
     {
+        reporter.report_log(vod_id, &format!("❌ Compression stage failed: {}", e));
         let _ = tokio::fs::remove_dir_all(&work_dir).await;
         return Err(e);
     }
@@ -131,6 +127,7 @@ pub async fn run_archive_pipeline(
     let chunks_dir = work_dir.join("chunks");
     let _ = tokio::fs::remove_dir_all(&chunks_dir).await;
     let _ = tokio::fs::remove_file(&concat_file).await;
+    reporter.report_log(vod_id, "Cleaned up temporary chunk files to conserve disk space.");
 
     if is_cancelled.load(Ordering::Relaxed) {
         let _ = tokio::fs::remove_dir_all(&work_dir).await;

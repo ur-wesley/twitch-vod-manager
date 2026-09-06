@@ -29,6 +29,20 @@ impl ProgressReporter for WorkerProgressReporter {
             progress.percent * 0.35, // 0 - 35% of total pipeline
             None,
         );
+
+        if progress.downloaded_chunks == progress.total_chunks
+            || (progress.total_chunks >= 10 && progress.downloaded_chunks % (progress.total_chunks / 10).max(1) == 0)
+        {
+            info!(
+                job_id = %self.job_id,
+                "Downloading: {:.1}% ({}/{} chunks, {:.1} MB/s, ETA: {}s)",
+                progress.percent,
+                progress.downloaded_chunks,
+                progress.total_chunks,
+                progress.speed_mbps,
+                progress.eta_seconds
+            );
+        }
     }
 
     fn report_compression(&self, progress: &CompressionProgress) {
@@ -39,6 +53,16 @@ impl ProgressReporter for WorkerProgressReporter {
             35.0 + (progress.percent * 0.45), // 35 - 80% of total pipeline
             None,
         );
+
+        if progress.percent as u32 % 20 == 0 && progress.percent > 0.0 && progress.percent < 99.0 {
+            info!(
+                job_id = %self.job_id,
+                "Compressing: {:.1}% (fps: {:.0}, speed: {})",
+                progress.percent,
+                progress.fps,
+                progress.speed
+            );
+        }
     }
 
     fn report_s3(&self, progress: &S3TransferProgress) {
@@ -49,6 +73,15 @@ impl ProgressReporter for WorkerProgressReporter {
             80.0 + (progress.percent * 0.20), // 80 - 100% of total pipeline
             None,
         );
+
+        if progress.percent as u32 % 25 == 0 && progress.percent > 0.0 {
+            info!(
+                job_id = %self.job_id,
+                "S3 Upload: {:.1}% ({:.1} MB/s)",
+                progress.percent,
+                progress.speed_mbps
+            );
+        }
     }
 
     fn report_youtube(&self, progress: &YouTubeUploadProgress) {
@@ -59,6 +92,14 @@ impl ProgressReporter for WorkerProgressReporter {
             progress.percent,
             None,
         );
+
+        if progress.percent as u32 % 25 == 0 && progress.percent > 0.0 {
+            info!(
+                job_id = %self.job_id,
+                "YouTube Upload: {:.1}%",
+                progress.percent
+            );
+        }
     }
 
     fn report_drive(&self, progress: &DriveTransferProgress) {
@@ -70,9 +111,19 @@ impl ProgressReporter for WorkerProgressReporter {
             80.0 + (progress.percent * 0.20),
             None,
         );
+
+        if progress.percent as u32 % 25 == 0 && progress.percent > 0.0 {
+            info!(
+                job_id = %self.job_id,
+                "{} Upload: {:.1}%",
+                progress.provider,
+                progress.percent
+            );
+        }
     }
 
     fn report_stage(&self, _vod_id: &str, stage: &str, message: &str) {
+        info!(job_id = %self.job_id, stage = %stage, "[Stage: {}] {}", stage, message);
         let _ = self.db.update_job_status(
             &self.job_id,
             stage,
@@ -90,6 +141,7 @@ impl ProgressReporter for WorkerProgressReporter {
     }
 
     fn report_log(&self, _vod_id: &str, message: &str) {
+        info!(job_id = %self.job_id, "{}", message);
         self.db.append_log(&self.job_id, message);
     }
 }
@@ -115,6 +167,10 @@ pub fn spawn_worker_job(state: AppState, job_id: String, config: PipelineConfig)
 
         let temp_dir = state_clone.data_dir.join("temp");
         info!("Starting worker job #{} for VOD {}", job_id_clone, config.vod_id);
+        state_clone.db.append_log(
+            &job_id_clone,
+            &format!("🚀 Job #{} initialized for VOD {}", job_id_clone, config.vod_id),
+        );
 
         let result = run_archive_pipeline(
             reporter,
@@ -127,6 +183,10 @@ pub fn spawn_worker_job(state: AppState, job_id: String, config: PipelineConfig)
         match result {
             Ok(res) => {
                 info!("Worker job #{} completed successfully", job_id_clone);
+                state_clone.db.append_log(
+                    &job_id_clone,
+                    "✅ Worker job finished successfully!",
+                );
                 let _ = state_clone.db.update_job_success(
                     &job_id_clone,
                     res.local_path.as_deref(),
@@ -139,6 +199,10 @@ pub fn spawn_worker_job(state: AppState, job_id: String, config: PipelineConfig)
             }
             Err(vod_core::AppError::Cancelled) => {
                 info!("Worker job #{} was cancelled", job_id_clone);
+                state_clone.db.append_log(
+                    &job_id_clone,
+                    "⚠️ Job was cancelled by user",
+                );
                 let _ = state_clone.db.update_job_status(
                     &job_id_clone,
                     "cancelled",
@@ -149,6 +213,10 @@ pub fn spawn_worker_job(state: AppState, job_id: String, config: PipelineConfig)
             }
             Err(e) => {
                 error!("Worker job #{} failed: {}", job_id_clone, e);
+                state_clone.db.append_log(
+                    &job_id_clone,
+                    &format!("❌ Job failed: {}", e),
+                );
                 let _ = state_clone.db.update_job_status(
                     &job_id_clone,
                     "failed",
