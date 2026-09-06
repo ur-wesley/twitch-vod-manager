@@ -54,6 +54,7 @@ pub fn run() {
             list_vods,
             get_qualities,
             detect_ffmpeg,
+            get_system_hardware_info,
             cancel_active_task,
             start_pipeline,
             list_s3_vods,

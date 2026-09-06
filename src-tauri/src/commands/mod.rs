@@ -1,5 +1,7 @@
 use crate::error::StableError;
-use crate::modules::compressor::{detect_ffmpeg as detect_ffmpeg_impl, FfmpegInfo};
+use crate::modules::compressor::{
+    detect_ffmpeg as detect_ffmpeg_impl, detect_system_hardware, FfmpegInfo, SystemHardwareInfo,
+};
 use crate::modules::settings::{get_config_path, save_settings as save_settings_impl, AppSettings};
 use crate::modules::storage_s3::{
     delete_s3_object, download_vod_from_s3, list_bucket_vods, S3Object,
@@ -293,6 +295,18 @@ pub async fn detect_ffmpeg(
 }
 
 #[tauri::command]
+pub async fn get_system_hardware_info(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<SystemHardwareInfo, StableError> {
+    let custom_path = {
+        let s = state.settings.read().await;
+        s.ffmpeg_path.clone()
+    };
+    Ok(detect_system_hardware(custom_path.as_deref(), Some(&app)).await)
+}
+
+#[tauri::command]
 pub async fn download_and_install_ffmpeg(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -365,6 +379,8 @@ pub async fn start_pipeline(
     preset: String,
     crf: u8,
     duration_secs: Option<f64>,
+    start_secs: Option<f64>,
+    end_secs: Option<f64>,
     save_local: Option<bool>,
     upload_to_s3: Option<bool>,
     upload_to_gdrive: Option<bool>,
@@ -452,6 +468,8 @@ pub async fn start_pipeline(
         preset,
         crf,
         duration_secs,
+        start_secs,
+        end_secs,
         save_local: save_local.unwrap_or(true),
         local_output_dir: custom_out,
         upload_to_s3: do_upload_s3,
@@ -1010,11 +1028,54 @@ pub async fn worker_get_status(
 
 #[tauri::command]
 pub async fn worker_sync_settings(
+    app: AppHandle,
     state: State<'_, AppState>,
     worker_url: String,
     api_key: Option<String>,
 ) -> Result<(), StableError> {
-    let s = state.settings.read().await;
+    let s = state.settings.read().await.clone();
+
+    // Proactively resolve real Google Drive OAuth client credentials
+    let (resolved_gd_cid, resolved_gd_cs) = {
+        let raw_cid = s.gdrive_client_id.as_deref().unwrap_or_default();
+        let raw_cs = s.gdrive_client_secret.as_deref().unwrap_or_default();
+        let yt_cid = s.youtube_client_id.as_deref().unwrap_or_default();
+        let yt_cs = s.youtube_client_secret.as_deref().unwrap_or_default();
+        let (c, sec) = if !raw_cid.trim().is_empty() {
+            (raw_cid, raw_cs)
+        } else if !yt_cid.trim().is_empty() {
+            (yt_cid, yt_cs)
+        } else {
+            ("", "")
+        };
+        vod_core::storage_gdrive::resolve_gdrive_credentials(c, sec)
+    };
+
+    // If refresh token exists and client credentials are valid, proactively refresh the access token
+    let mut fresh_gd_tok = s.gdrive_access_token.clone();
+    if let Some(ref rtok) = s.gdrive_refresh_token {
+        if !rtok.trim().is_empty()
+            && resolved_gd_cid != vod_core::storage_gdrive::DEFAULT_GDRIVE_CLIENT_ID
+            && !resolved_gd_cid.trim().is_empty()
+        {
+            if let Ok(new_tok) = vod_core::storage_gdrive::refresh_gdrive_token(
+                &resolved_gd_cid,
+                &resolved_gd_cs,
+                rtok,
+            )
+            .await
+            {
+                fresh_gd_tok = Some(new_tok.clone());
+                let mut updated_s = s.clone();
+                updated_s.gdrive_access_token = Some(new_tok);
+                if let Ok(path) = get_config_path(&app) {
+                    let _ = save_settings_impl(&path, &updated_s);
+                }
+                *state.settings.write().await = updated_s;
+            }
+        }
+    }
+
     let payload = serde_json::json!({
         "twitch_client_id": s.twitch_client_id,
         "twitch_client_secret": s.twitch_client_secret,
@@ -1026,9 +1087,9 @@ pub async fn worker_sync_settings(
         "s3_bucket": s.s3_bucket,
         "s3_access_key": s.s3_access_key,
         "s3_secret_key": s.s3_secret_key,
-        "gdrive_client_id": s.gdrive_client_id,
-        "gdrive_client_secret": s.gdrive_client_secret,
-        "gdrive_access_token": s.gdrive_access_token,
+        "gdrive_client_id": resolved_gd_cid,
+        "gdrive_client_secret": resolved_gd_cs,
+        "gdrive_access_token": fresh_gd_tok,
         "gdrive_refresh_token": s.gdrive_refresh_token,
         "gdrive_folder_id": s.gdrive_folder_id,
         "webdav_endpoint": s.webdav_endpoint,
@@ -1094,6 +1155,8 @@ pub async fn worker_dispatch_job(
     preset: Option<String>,
     crf: Option<u8>,
     duration_secs: Option<f64>,
+    start_secs: Option<f64>,
+    end_secs: Option<f64>,
     save_local: Option<bool>,
     upload_to_s3: Option<bool>,
     upload_to_gdrive: Option<bool>,
@@ -1130,6 +1193,17 @@ pub async fn worker_dispatch_job(
     let (twitch_cid, _) =
         vod_core::twitch::resolve_twitch_credentials(&twitch_cid, "");
 
+    let (resolved_gd_cid, resolved_gd_cs) = {
+        let raw_cid = gd_cid.as_deref().unwrap_or_default();
+        let raw_cs = gd_cs.as_deref().unwrap_or_default();
+        let (c, sec) = if !raw_cid.trim().is_empty() {
+            (raw_cid, raw_cs)
+        } else {
+            ("", "")
+        };
+        vod_core::storage_gdrive::resolve_gdrive_credentials(c, sec)
+    };
+
     let s3_config = if upload_to_s3.unwrap_or(false) && !s3_ep.is_empty() && !s3_bkt.is_empty() {
         Some(serde_json::json!({
             "endpoint": s3_ep,
@@ -1142,10 +1216,10 @@ pub async fn worker_dispatch_job(
         None
     };
 
-    let gdrive_config = if upload_to_gdrive.unwrap_or(false) && gd_tok.is_some() {
+    let gdrive_config = if upload_to_gdrive.unwrap_or(false) && (gd_tok.is_some() || gd_rtok.is_some()) {
         Some(serde_json::json!({
-            "client_id": gd_cid.unwrap_or_default(),
-            "client_secret": gd_cs.unwrap_or_default(),
+            "client_id": resolved_gd_cid,
+            "client_secret": resolved_gd_cs,
             "access_token": gd_tok.unwrap_or_default(),
             "refresh_token": gd_rtok,
             "folder_id": gdrive_folder_id.or(gd_fid),
@@ -1172,6 +1246,8 @@ pub async fn worker_dispatch_job(
         "preset": preset,
         "crf": crf,
         "duration_secs": duration_secs,
+        "start_secs": start_secs,
+        "end_secs": end_secs,
         "save_local": save_local,
         "upload_to_s3": upload_to_s3,
         "s3_config": s3_config,

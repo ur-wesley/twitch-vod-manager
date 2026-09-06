@@ -44,3 +44,4 @@ toml = "0.8"
 futures-util = "0.3"
 vod-core = { path = "../crates/core" }
 dotenvy = "0.15"
+sysinfo = "0.30"

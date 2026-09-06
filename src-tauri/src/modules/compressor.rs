@@ -16,6 +16,7 @@ pub struct CompressionProgress {
     pub fps: f64,
     pub speed: String,
     pub size_bytes: u64,
+    pub eta_seconds: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +24,18 @@ pub struct FfmpegInfo {
     pub available: bool,
     pub path: String,
     pub version: String,
+    pub has_nvenc: bool,
+    pub has_qsv: bool,
+    pub has_amf: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemHardwareInfo {
+    pub cpu_brand: String,
+    pub cpu_cores: usize,
+    pub cpu_physical_cores: usize,
+    pub total_memory_mb: u64,
+    pub gpu_name: Option<String>,
     pub has_nvenc: bool,
     pub has_qsv: bool,
     pub has_amf: bool,
@@ -147,6 +160,71 @@ pub async fn detect_ffmpeg(custom_path: Option<&str>, app_handle: Option<&tauri:
         has_nvenc: false,
         has_qsv: false,
         has_amf: false,
+    }
+}
+
+fn detect_gpu_name() -> Option<String> {
+    #[cfg(windows)]
+    {
+        for index in ["0000", "0001", "0002"] {
+            let key = format!(
+                r"HKLM\SYSTEM\CurrentControlSet\Control\Class\{{4d36e968-e325-11ce-bfc1-08002be10318}}\{}",
+                index
+            );
+            let mut cmd = std::process::Command::new("reg");
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            if let Ok(output) = cmd.args(["query", &key, "/v", "DriverDesc"]).output() {
+                if output.status.success() {
+                    let text = String::from_utf8_lossy(&output.stdout);
+                    for line in text.lines() {
+                        if line.contains("DriverDesc") {
+                            if let Some(desc) = line.split("REG_SZ").nth(1) {
+                                let trimmed = desc.trim();
+                                if !trimmed.is_empty() {
+                                    return Some(trimmed.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+pub async fn detect_system_hardware(
+    custom_ffmpeg_path: Option<&str>,
+    app_handle: Option<&tauri::AppHandle>,
+) -> SystemHardwareInfo {
+    use sysinfo::System;
+    let mut sys = System::new();
+    sys.refresh_cpu_specifics(sysinfo::CpuRefreshKind::everything());
+    sys.refresh_memory();
+
+    let cpu_cores = sys.cpus().len().max(1);
+    let cpu_physical_cores = sys.physical_core_count().unwrap_or(cpu_cores).max(1);
+    let cpu_brand = sys
+        .cpus()
+        .first()
+        .map(|c| c.brand().trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "Unknown CPU".to_string());
+    let total_memory_mb = sys.total_memory() / (1024 * 1024);
+
+    let ffmpeg_info = detect_ffmpeg(custom_ffmpeg_path, app_handle).await;
+    let gpu_name = detect_gpu_name();
+
+    SystemHardwareInfo {
+        cpu_brand,
+        cpu_cores,
+        cpu_physical_cores,
+        total_memory_mb,
+        gpu_name,
+        has_nvenc: ffmpeg_info.has_nvenc,
+        has_qsv: ffmpeg_info.has_qsv,
+        has_amf: ffmpeg_info.has_amf,
     }
 }
 
@@ -371,6 +449,34 @@ pub async fn compress_vod(
                 .arg("-b:a")
                 .arg("160k");
         }
+        "hevc_amf" => {
+            cmd.arg("-c:v")
+                .arg("hevc_amf")
+                .arg("-quality")
+                .arg("quality")
+                .arg("-rc")
+                .arg("cqp")
+                .arg("-qp_p")
+                .arg(crf.to_string())
+                .arg("-qp_i")
+                .arg(crf.to_string())
+                .arg("-c:a")
+                .arg("aac")
+                .arg("-b:a")
+                .arg("160k");
+        }
+        "hevc_qsv" => {
+            cmd.arg("-c:v")
+                .arg("hevc_qsv")
+                .arg("-preset")
+                .arg("medium")
+                .arg("-global_quality")
+                .arg(crf.to_string())
+                .arg("-c:a")
+                .arg("aac")
+                .arg("-b:a")
+                .arg("160k");
+        }
         "libx265" => {
             cmd.arg("-c:v")
                 .arg("libx265")
@@ -483,6 +589,18 @@ pub async fn compress_vod(
                         0.0
                     };
 
+                    let speed_mult = current_speed
+                        .trim_end_matches('x')
+                        .trim()
+                        .parse::<f64>()
+                        .unwrap_or(0.0);
+
+                    let eta_seconds = if speed_mult > 0.05 && total_secs > current_time_secs {
+                        ((total_secs - current_time_secs) / speed_mult).max(0.0) as u64
+                    } else {
+                        0
+                    };
+
                     let _ = app.emit(
                         "compression-progress",
                         CompressionProgress {
@@ -492,6 +610,7 @@ pub async fn compress_vod(
                             fps: current_fps,
                             speed: current_speed.clone(),
                             size_bytes: current_size,
+                            eta_seconds,
                         },
                     );
                 }
@@ -531,6 +650,7 @@ pub async fn compress_vod(
             fps: current_fps,
             speed: current_speed,
             size_bytes: current_size,
+            eta_seconds: 0,
         },
     );
 
