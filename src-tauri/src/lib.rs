@@ -50,6 +50,7 @@ pub fn run() {
             logout_twitch,
             set_twitch_token,
             get_twitch_user,
+            resolve_channel,
             list_vods,
             get_qualities,
             detect_ffmpeg,

@@ -36,7 +36,7 @@ function mapInvokeError(e: unknown): StableError {
 
 export function tauriInvoke<T>(
   cmd: string,
-  args?: Record<string, unknown>
+  args?: Record<string, unknown>,
 ): ResultAsync<T, StableError> {
   return ResultAsync.fromPromise(invoke<T>(cmd, args), mapInvokeError);
 }
@@ -67,8 +67,11 @@ export const setTwitchToken = (token: string): ResultAsync<TwitchUser, StableErr
 export const getTwitchUser = (): ResultAsync<TwitchUser, StableError> =>
   tauriInvoke<TwitchUser>("get_twitch_user");
 
-export const listVods = (): ResultAsync<TwitchVod[], StableError> =>
-  tauriInvoke<TwitchVod[]>("list_vods");
+export const listVods = (channel?: string): ResultAsync<TwitchVod[], StableError> =>
+  tauriInvoke<TwitchVod[]>("list_vods", { channel: channel || null });
+
+export const resolveChannel = (channel: string): ResultAsync<TwitchUser, StableError> =>
+  tauriInvoke<TwitchUser>("resolve_channel", { channel });
 
 export const getQualities = (vodId: string): ResultAsync<VodQuality[], StableError> =>
   tauriInvoke<VodQuality[]>("get_qualities", { vodId });
@@ -124,7 +127,7 @@ export const listS3Vods = (): ResultAsync<S3Object[], StableError> =>
 
 export const downloadS3Vod = (
   objectKey: string,
-  destinationPath: string
+  destinationPath: string,
 ): ResultAsync<void, StableError> =>
   tauriInvoke<void>("download_s3_vod", { objectKey, destinationPath });
 
@@ -147,7 +150,7 @@ export const getGdriveQuota = (): ResultAsync<StorageQuota, StableError> =>
 export const downloadGdriveVod = (
   fileId: string,
   vodId: string,
-  destinationPath: string
+  destinationPath: string,
 ): ResultAsync<void, StableError> =>
   tauriInvoke<void>("download_gdrive_vod", { fileId, vodId, destinationPath });
 
@@ -164,7 +167,7 @@ export const getWebdavQuota = (): ResultAsync<StorageQuota, StableError> =>
 export const downloadWebdavVod = (
   filenameOrHref: string,
   vodId: string,
-  destinationPath: string
+  destinationPath: string,
 ): ResultAsync<void, StableError> =>
   tauriInvoke<void>("download_webdav_vod", { filenameOrHref, vodId, destinationPath });
 
@@ -184,26 +187,26 @@ export const setYouTubeToken = (token: string): ResultAsync<void, StableError> =
 export const publishToYouTube = (
   vodId: string,
   localVideoPath: string,
-  metadata: YouTubeVideoMetadata
+  metadata: YouTubeVideoMetadata,
 ): ResultAsync<string, StableError> =>
   tauriInvoke<string>("publish_to_youtube", { vodId, localVideoPath, metadata });
 
 // Cloud VPS Worker API
 export const workerGetStatus = (
   workerUrl: string,
-  apiKey?: string
+  apiKey?: string,
 ): ResultAsync<WorkerStatus, StableError> =>
   tauriInvoke<WorkerStatus>("worker_get_status", { workerUrl, apiKey });
 
 export const workerSyncSettings = (
   workerUrl: string,
-  apiKey?: string
+  apiKey?: string,
 ): ResultAsync<void, StableError> =>
   tauriInvoke<void>("worker_sync_settings", { workerUrl, apiKey });
 
 export const workerListJobs = (
   workerUrl: string,
-  apiKey?: string
+  apiKey?: string,
 ): ResultAsync<WorkerJob[], StableError> =>
   tauriInvoke<WorkerJob[]>("worker_list_jobs", { workerUrl, apiKey });
 
@@ -228,7 +231,7 @@ export interface WorkerDispatchJobArgs {
 }
 
 export const workerDispatchJob = (
-  args: WorkerDispatchJobArgs
+  args: WorkerDispatchJobArgs,
 ): ResultAsync<{ job_id: string; message: string }, StableError> =>
   tauriInvoke<{ job_id: string; message: string }>("worker_dispatch_job", {
     workerUrl: args.workerUrl,
@@ -253,38 +256,38 @@ export const workerDispatchJob = (
 export const workerCancelJob = (
   workerUrl: string,
   apiKey: string | undefined,
-  jobId: string
+  jobId: string,
 ): ResultAsync<void, StableError> =>
   tauriInvoke<void>("worker_cancel_job", { workerUrl, apiKey, jobId });
 
 export const workerGetJobLogs = (
   workerUrl: string,
   apiKey: string | undefined,
-  jobId: string
+  jobId: string,
 ): ResultAsync<WorkerJobLog[], StableError> =>
   tauriInvoke<WorkerJobLog[]>("worker_get_job_logs", { workerUrl, apiKey, jobId });
 
 export const workerDeleteJob = (
   workerUrl: string,
   apiKey: string | undefined,
-  jobId: string
+  jobId: string,
 ): ResultAsync<void, StableError> =>
   tauriInvoke<void>("worker_delete_job", { workerUrl, apiKey, jobId });
 
 export const workerTriggerWatcher = (
   workerUrl: string,
-  apiKey?: string
+  apiKey?: string,
 ): ResultAsync<{ success: boolean; queued_jobs: number; message?: string }, StableError> =>
   tauriInvoke<{ success: boolean; queued_jobs: number; message?: string }>(
     "worker_trigger_watcher",
-    { workerUrl, apiKey }
+    { workerUrl, apiKey },
   );
 
 export const workerDownloadFile = (
   workerUrl: string,
   apiKey: string | undefined,
   jobId: string,
-  destinationPath: string
+  destinationPath: string,
 ): ResultAsync<void, StableError> =>
   tauriInvoke<void>("worker_download_file", {
     workerUrl,
@@ -295,7 +298,7 @@ export const workerDownloadFile = (
 
 // Event Listeners
 export const onDownloadProgress = (
-  callback: (progress: DownloadProgress) => void
+  callback: (progress: DownloadProgress) => void,
 ): Promise<UnlistenFn> => {
   return listen<DownloadProgress>("download-progress", (event) => {
     callback(event.payload);
@@ -303,7 +306,7 @@ export const onDownloadProgress = (
 };
 
 export const onCompressionProgress = (
-  callback: (progress: CompressionProgress) => void
+  callback: (progress: CompressionProgress) => void,
 ): Promise<UnlistenFn> => {
   return listen<CompressionProgress>("compression-progress", (event) => {
     callback(event.payload);
@@ -311,7 +314,7 @@ export const onCompressionProgress = (
 };
 
 export const onS3UploadProgress = (
-  callback: (progress: S3TransferProgress) => void
+  callback: (progress: S3TransferProgress) => void,
 ): Promise<UnlistenFn> => {
   return listen<S3TransferProgress>("s3-upload-progress", (event) => {
     callback(event.payload);
@@ -319,7 +322,7 @@ export const onS3UploadProgress = (
 };
 
 export const onS3DownloadProgress = (
-  callback: (progress: S3TransferProgress) => void
+  callback: (progress: S3TransferProgress) => void,
 ): Promise<UnlistenFn> => {
   return listen<S3TransferProgress>("s3-download-progress", (event) => {
     callback(event.payload);
@@ -327,7 +330,7 @@ export const onS3DownloadProgress = (
 };
 
 export const onYouTubeUploadProgress = (
-  callback: (progress: YouTubeUploadProgress) => void
+  callback: (progress: YouTubeUploadProgress) => void,
 ): Promise<UnlistenFn> => {
   return listen<YouTubeUploadProgress>("youtube-upload-progress", (event) => {
     callback(event.payload);
@@ -335,7 +338,7 @@ export const onYouTubeUploadProgress = (
 };
 
 export const onDriveUploadProgress = (
-  callback: (progress: DriveTransferProgress) => void
+  callback: (progress: DriveTransferProgress) => void,
 ): Promise<UnlistenFn> => {
   return listen<DriveTransferProgress>("drive-upload-progress", (event) => {
     callback(event.payload);
@@ -343,7 +346,7 @@ export const onDriveUploadProgress = (
 };
 
 export const onToolDownloadProgress = (
-  callback: (progress: ToolDownloadProgress) => void
+  callback: (progress: ToolDownloadProgress) => void,
 ): Promise<UnlistenFn> => {
   return listen<ToolDownloadProgress>("tool-download-progress", (event) => {
     callback(event.payload);
@@ -358,7 +361,7 @@ export interface WorkerDownloadProgress {
 }
 
 export const onWorkerDownloadProgress = (
-  callback: (progress: WorkerDownloadProgress) => void
+  callback: (progress: WorkerDownloadProgress) => void,
 ): Promise<UnlistenFn> => {
   return listen<WorkerDownloadProgress>("worker-download-progress", (event) => {
     callback(event.payload);

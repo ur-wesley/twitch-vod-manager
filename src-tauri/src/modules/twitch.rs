@@ -270,6 +270,62 @@ pub async fn get_user_info(client_id: &str, access_token: &str) -> Result<Twitch
     })
 }
 
+pub async fn get_user_by_login(client_id: &str, access_token: &str, login: &str) -> Result<TwitchUser, AppError> {
+    let client = reqwest::Client::new();
+    let url = format!("https://api.twitch.tv/helix/users?login={}", login);
+    let res = client
+        .get(&url)
+        .header("Client-Id", client_id)
+        .header("Authorization", format!("Bearer {}", access_token))
+        .send()
+        .await?;
+
+    if !res.status().is_success() {
+        let text = res.text().await.unwrap_or_default();
+        return Err(AppError::Twitch(format!("Failed to fetch user by login: {}", text)));
+    }
+
+    let body: HelixUsersResponse = res.json().await?;
+    let user = body.data.into_iter().next().ok_or_else(|| {
+        AppError::Twitch(format!("Channel @{} not found on Twitch", login))
+    })?;
+
+    Ok(TwitchUser {
+        id: user.id,
+        login: user.login,
+        display_name: user.display_name,
+        profile_image_url: user.profile_image_url,
+    })
+}
+
+pub async fn get_user_by_id(client_id: &str, access_token: &str, id: &str) -> Result<TwitchUser, AppError> {
+    let client = reqwest::Client::new();
+    let url = format!("https://api.twitch.tv/helix/users?id={}", id);
+    let res = client
+        .get(&url)
+        .header("Client-Id", client_id)
+        .header("Authorization", format!("Bearer {}", access_token))
+        .send()
+        .await?;
+
+    if !res.status().is_success() {
+        let text = res.text().await.unwrap_or_default();
+        return Err(AppError::Twitch(format!("Failed to fetch user by ID: {}", text)));
+    }
+
+    let body: HelixUsersResponse = res.json().await?;
+    let user = body.data.into_iter().next().ok_or_else(|| {
+        AppError::Twitch(format!("User ID {} not found on Twitch", id))
+    })?;
+
+    Ok(TwitchUser {
+        id: user.id,
+        login: user.login,
+        display_name: user.display_name,
+        profile_image_url: user.profile_image_url,
+    })
+}
+
 pub async fn get_vods(
     client_id: &str,
     access_token: &str,
@@ -297,39 +353,85 @@ pub async fn get_vods(
     Ok(body.data)
 }
 
-pub async fn get_vod_qualities(
-    access_token: &str,
+async fn request_playback_token(
+    client: &reqwest::Client,
     vod_id: &str,
-) -> Result<Vec<VodQuality>, AppError> {
-    let client = reqwest::Client::new();
-
+    auth_token: Option<&str>,
+) -> Result<(String, String), AppError> {
     let gql_query = serde_json::json!({
         "operationName": "PlaybackAccessToken_Template",
-        "query": "query PlaybackAccessToken_Template($login: String!, $isLive: Boolean!, $vodID: ID!, $isVod: Boolean!, $playerType: String!) { videoPlaybackAccessToken(id: $vodID, params: {platform: \"web\", playerBackend: \"mediaplayer\", playerType: $playerType}) @include(if: $isVod) { value signature } }",
+        "query": "query PlaybackAccessToken_Template($vodID: ID!, $playerType: String!) { videoPlaybackAccessToken(id: $vodID, params: {platform: \"web\", playerBackend: \"mediaplayer\", playerType: $playerType}) { value signature } }",
         "variables": {
-            "isLive": false,
-            "login": "",
-            "isVod": true,
             "vodID": vod_id,
             "playerType": "site"
         }
     });
 
-    let gql_res = client
+    let mut req = client
         .post("https://gql.twitch.tv/gql")
         .header("Client-Id", "kimne78kx3ncx6brgo4mv6wki5h1ko")
-        .header("Authorization", format!("OAuth {}", access_token))
-        .json(&gql_query)
-        .send()
-        .await?;
+        .json(&gql_query);
 
-    let gql_body: serde_json::Value = gql_res.json().await?;
-    let token = gql_body["data"]["videoPlaybackAccessToken"]["value"]
+    if let Some(token) = auth_token {
+        let trimmed = token.trim();
+        if !trimmed.is_empty() {
+            req = req.header("Authorization", format!("OAuth {}", trimmed));
+        }
+    }
+
+    let res = req.send().await?;
+    if !res.status().is_success() {
+        let status = res.status();
+        let err_text = res.text().await.unwrap_or_default();
+        return Err(AppError::Twitch(format!("Twitch GQL HTTP error {}: {}", status, err_text)));
+    }
+
+    let body: serde_json::Value = res.json().await?;
+
+    if let Some(errors) = body.get("errors") {
+        if let Some(err_list) = errors.as_array() {
+            let messages: Vec<String> = err_list
+                .iter()
+                .filter_map(|e| e["message"].as_str().map(|s| s.to_string()))
+                .collect();
+            if !messages.is_empty() {
+                return Err(AppError::Twitch(format!("Twitch GQL error: {}", messages.join("; "))));
+            }
+        }
+    }
+
+    let token_val = body["data"]["videoPlaybackAccessToken"]["value"]
         .as_str()
         .ok_or_else(|| AppError::Twitch("Missing playback access token in GQL response".into()))?;
-    let sig = gql_body["data"]["videoPlaybackAccessToken"]["signature"]
+    let sig_val = body["data"]["videoPlaybackAccessToken"]["signature"]
         .as_str()
         .ok_or_else(|| AppError::Twitch("Missing playback signature in GQL response".into()))?;
+
+    Ok((token_val.to_string(), sig_val.to_string()))
+}
+
+pub async fn get_vod_qualities(
+    access_token: &str,
+    vod_id: &str,
+) -> Result<Vec<VodQuality>, AppError> {
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .build()?;
+
+    let trimmed = access_token.trim();
+    let token_result = if !trimmed.is_empty() {
+        match request_playback_token(&client, vod_id, Some(trimmed)).await {
+            Ok(res) => Ok(res),
+            Err(_) => {
+                // If token-based request failed (e.g. invalid token, expired, or 401), fallback to anonymous request
+                request_playback_token(&client, vod_id, None).await
+            }
+        }
+    } else {
+        request_playback_token(&client, vod_id, None).await
+    };
+
+    let (token, sig) = token_result?;
 
     let encoded_token: String = url::form_urlencoded::byte_serialize(token.as_bytes()).collect();
 

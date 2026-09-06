@@ -11,6 +11,7 @@ pub struct AppSettings {
     pub twitch_refresh_token: Option<String>,
     pub twitch_user_id: Option<String>,
     pub twitch_username: Option<String>,
+    pub twitch_target_channel: Option<String>,
 
     pub s3_provider: String, // "cloudflare_r2", "backblaze_b2", "custom"
     pub s3_endpoint: String,
@@ -65,6 +66,7 @@ impl Default for AppSettings {
             twitch_refresh_token: None,
             twitch_user_id: None,
             twitch_username: None,
+            twitch_target_channel: None,
 
             s3_provider: "cloudflare_r2".to_string(),
             s3_endpoint: String::new(),
@@ -115,6 +117,7 @@ struct TomlTwitch {
     refresh_token: Option<String>,
     user_id: Option<String>,
     username: Option<String>,
+    target_channel: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -169,6 +172,16 @@ struct TomlTools {
 }
 
 #[derive(Debug, Deserialize, Default)]
+struct TomlWorker {
+    url: Option<String>,
+    api_key: Option<String>,
+    auto_sync: Option<bool>,
+    auto_archive_enabled: Option<bool>,
+    auto_archive_interval_mins: Option<u32>,
+    max_storage_gb: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, Default)]
 struct SectionedConfig {
     twitch: Option<TomlTwitch>,
     s3: Option<TomlS3>,
@@ -179,11 +192,17 @@ struct SectionedConfig {
     video: Option<TomlEncoding>,
     youtube: Option<TomlYouTube>,
     tools: Option<TomlTools>,
+    worker: Option<TomlWorker>,
 }
 
 impl AppSettings {
-    /// Parse AppSettings from either flat or sectioned TOML string
+    /// Parse AppSettings from either flat or sectioned TOML string, starting from default values
     pub fn from_toml(content: &str) -> Result<Self, AppError> {
+        Self::from_toml_merge(&Self::default(), content)
+    }
+
+    /// Parse and merge TOML settings over an existing AppSettings instance
+    pub fn from_toml_merge(base: &Self, content: &str) -> Result<Self, AppError> {
         // Try direct flat deserialization first
         if let Ok(settings) = toml::from_str::<AppSettings>(content) {
             return Ok(settings);
@@ -191,7 +210,7 @@ impl AppSettings {
 
         // Try sectioned TOML deserialization
         let parsed: SectionedConfig = toml::from_str(content)?;
-        let mut settings = AppSettings::default();
+        let mut settings = base.clone();
 
         if let Some(t) = parsed.twitch {
             if let Some(v) = t.client_id { settings.twitch_client_id = v; }
@@ -200,6 +219,7 @@ impl AppSettings {
             if t.refresh_token.is_some() { settings.twitch_refresh_token = t.refresh_token; }
             if t.user_id.is_some() { settings.twitch_user_id = t.user_id; }
             if t.username.is_some() { settings.twitch_username = t.username; }
+            if t.target_channel.is_some() { settings.twitch_target_channel = t.target_channel; }
         }
 
         let s3 = parsed.s3.or(parsed.storage);
@@ -249,6 +269,15 @@ impl AppSettings {
             }
         }
 
+        if let Some(w) = parsed.worker {
+            if w.url.is_some() { settings.worker_url = w.url; }
+            if w.api_key.is_some() { settings.worker_api_key = w.api_key; }
+            if w.auto_sync.is_some() { settings.worker_auto_sync = w.auto_sync; }
+            if w.auto_archive_enabled.is_some() { settings.auto_archive_enabled = w.auto_archive_enabled; }
+            if w.auto_archive_interval_mins.is_some() { settings.auto_archive_interval_mins = w.auto_archive_interval_mins; }
+            if w.max_storage_gb.is_some() { settings.max_storage_gb = w.max_storage_gb; }
+        }
+
         Ok(settings)
     }
 
@@ -260,11 +289,26 @@ impl AppSettings {
         out.push_str("# ==========================================\n\n");
 
         out.push_str("[twitch]\n");
+        if !self.twitch_client_id.is_empty() {
+            out.push_str(&format!("client_id = {:?}\n", self.twitch_client_id));
+        }
+        if !self.twitch_client_secret.is_empty() {
+            out.push_str(&format!("client_secret = {:?}\n", self.twitch_client_secret));
+        }
+        if let Some(ref tok) = self.twitch_access_token {
+            out.push_str(&format!("access_token = {:?}\n", tok));
+        }
+        if let Some(ref rtok) = self.twitch_refresh_token {
+            out.push_str(&format!("refresh_token = {:?}\n", rtok));
+        }
         if let Some(ref u) = self.twitch_username {
             out.push_str(&format!("username = {:?}\n", u));
         }
         if let Some(ref uid) = self.twitch_user_id {
             out.push_str(&format!("user_id = {:?}\n", uid));
+        }
+        if let Some(ref tc) = self.twitch_target_channel {
+            out.push_str(&format!("target_channel = {:?}\n", tc));
         }
 
         out.push_str("\n[s3]\n");
@@ -309,6 +353,28 @@ impl AppSettings {
         }
         if let Some(ad) = self.auto_download_tools {
             out.push_str(&format!("auto_download_tools = {}\n", ad));
+        }
+
+        if self.worker_url.is_some() || self.auto_archive_enabled.is_some() {
+            out.push_str("\n[worker]\n");
+            if let Some(ref u) = self.worker_url {
+                out.push_str(&format!("url = {:?}\n", u));
+            }
+            if let Some(ref k) = self.worker_api_key {
+                out.push_str(&format!("api_key = {:?}\n", k));
+            }
+            if let Some(s) = self.worker_auto_sync {
+                out.push_str(&format!("auto_sync = {}\n", s));
+            }
+            if let Some(a) = self.auto_archive_enabled {
+                out.push_str(&format!("auto_archive_enabled = {}\n", a));
+            }
+            if let Some(i) = self.auto_archive_interval_mins {
+                out.push_str(&format!("auto_archive_interval_mins = {}\n", i));
+            }
+            if let Some(m) = self.max_storage_gb {
+                out.push_str(&format!("max_storage_gb = {}\n", m));
+            }
         }
 
         out

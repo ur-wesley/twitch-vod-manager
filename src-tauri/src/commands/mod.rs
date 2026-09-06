@@ -5,8 +5,8 @@ use crate::modules::storage_s3::{
     delete_s3_object, download_vod_from_s3, list_bucket_vods, S3Object,
 };
 use crate::modules::twitch::{
-    get_user_info, get_vod_qualities, get_vods, start_oauth_flow, TwitchUser, TwitchVod,
-    VodQuality,
+    get_user_by_id, get_user_by_login, get_user_info, get_vod_qualities, get_vods,
+    start_oauth_flow, TwitchUser, TwitchVod, VodQuality,
 };
 use crate::modules::youtube::{
     start_google_oauth, upload_video_to_youtube,
@@ -137,26 +137,110 @@ pub async fn get_twitch_user(state: State<'_, AppState>) -> Result<TwitchUser, S
 }
 
 #[tauri::command]
-pub async fn list_vods(state: State<'_, AppState>) -> Result<Vec<TwitchVod>, StableError> {
-    let (client_id, token, user_id) = {
+pub async fn list_vods(
+    state: State<'_, AppState>,
+    channel: Option<String>,
+) -> Result<Vec<TwitchVod>, StableError> {
+    let (client_id, client_secret, user_token, default_user_id, target_channel) = {
         let s = state.settings.read().await;
         (
             s.twitch_client_id.clone(),
+            s.twitch_client_secret.clone(),
             s.twitch_access_token.clone().unwrap_or_default(),
             s.twitch_user_id.clone().unwrap_or_default(),
+            s.twitch_target_channel.clone().unwrap_or_default(),
         )
     };
-    if token.is_empty() || user_id.is_empty() {
+
+    let (client_id, client_secret) =
+        vod_core::twitch::resolve_twitch_credentials(&client_id, &client_secret);
+
+    let token = if !user_token.is_empty() {
+        user_token
+    } else if !client_id.is_empty() && !client_secret.is_empty() {
+        vod_core::twitch::get_app_access_token(&client_id, &client_secret)
+            .await
+            .map_err(StableError::from)?
+    } else {
         return Err(StableError::new(
             "AUTH_ERROR",
-            "Please login to Twitch first",
+            "Please login to Twitch or configure Twitch Client ID + Secret in Settings",
         ));
-    }
-    let (client_id, _) =
-        vod_core::twitch::resolve_twitch_credentials(&client_id, "");
+    };
+
+    let channel_input = channel
+        .filter(|c| !c.trim().is_empty())
+        .or_else(|| if !target_channel.trim().is_empty() { Some(target_channel) } else { None })
+        .or_else(|| if !default_user_id.trim().is_empty() { Some(default_user_id) } else { None });
+
+    let channel_str = match channel_input {
+        Some(c) => c.trim().trim_start_matches('@').to_string(),
+        None => {
+            return Err(StableError::new(
+                "AUTH_ERROR",
+                "No Twitch channel specified. Please login to Twitch or enter a channel name/ID.",
+            ));
+        }
+    };
+
+    let user_id = if channel_str.chars().all(|c| c.is_ascii_digit()) {
+        channel_str
+    } else {
+        let user = get_user_by_login(&client_id, &token, &channel_str)
+            .await
+            .map_err(|e| StableError::new("TWITCH_ERROR", format!("Could not find channel @{}: {}", channel_str, e)))?;
+        user.id
+    };
+
     get_vods(&client_id, &token, &user_id)
         .await
         .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn resolve_channel(
+    state: State<'_, AppState>,
+    channel: String,
+) -> Result<TwitchUser, StableError> {
+    let (client_id, client_secret, user_token) = {
+        let s = state.settings.read().await;
+        (
+            s.twitch_client_id.clone(),
+            s.twitch_client_secret.clone(),
+            s.twitch_access_token.clone().unwrap_or_default(),
+        )
+    };
+
+    let (client_id, client_secret) =
+        vod_core::twitch::resolve_twitch_credentials(&client_id, &client_secret);
+
+    let token = if !user_token.is_empty() {
+        user_token
+    } else if !client_id.is_empty() && !client_secret.is_empty() {
+        vod_core::twitch::get_app_access_token(&client_id, &client_secret)
+            .await
+            .map_err(StableError::from)?
+    } else {
+        return Err(StableError::new(
+            "AUTH_ERROR",
+            "Please login to Twitch or configure Twitch Client ID + Secret in Settings",
+        ));
+    };
+
+    let clean = channel.trim().trim_start_matches('@');
+    if clean.is_empty() {
+        return Err(StableError::new("INVALID_INPUT", "Channel cannot be empty"));
+    }
+
+    if clean.chars().all(|c| c.is_ascii_digit()) {
+        get_user_by_id(&client_id, &token, clean)
+            .await
+            .map_err(Into::into)
+    } else {
+        get_user_by_login(&client_id, &token, clean)
+            .await
+            .map_err(Into::into)
+    }
 }
 
 #[tauri::command]
@@ -173,12 +257,6 @@ pub async fn get_qualities(
             .clone()
             .unwrap_or_default()
     };
-    if token.is_empty() {
-        return Err(StableError::new(
-            "AUTH_ERROR",
-            "Authentication token missing",
-        ));
-    }
     get_vod_qualities(&token, &vod_id).await.map_err(Into::into)
 }
 
@@ -188,7 +266,8 @@ pub async fn import_settings_toml(
     state: State<'_, AppState>,
     toml_str: String,
 ) -> Result<AppSettings, StableError> {
-    let settings = AppSettings::from_toml(&toml_str)?;
+    let current = state.settings.read().await.clone();
+    let settings = AppSettings::from_toml_merge(&current, &toml_str)?;
     let path = get_config_path(&app)?;
     save_settings_impl(&path, &settings)?;
     *state.settings.write().await = settings.clone();
@@ -939,7 +1018,7 @@ pub async fn worker_sync_settings(
     let payload = serde_json::json!({
         "twitch_client_id": s.twitch_client_id,
         "twitch_client_secret": s.twitch_client_secret,
-        "twitch_user_id": s.twitch_user_id,
+        "twitch_user_id": s.twitch_target_channel.as_ref().or(s.twitch_user_id.as_ref()),
         "twitch_username": s.twitch_username,
         "s3_provider": s.s3_provider,
         "s3_endpoint": s.s3_endpoint,

@@ -41,6 +41,7 @@ import {
   onDriveUploadProgress,
   onS3UploadProgress,
   saveSettings,
+  resolveChannel,
   startPipeline,
   workerDispatchJob,
 } from "~/services/tauri";
@@ -66,6 +67,9 @@ export const App: Component = () => {
   const [settings, setSettings] = createSignal<AppSettings | null>(null);
   const [ffmpegInfo, setFfmpegInfo] = createSignal<FfmpegInfo | null>(null);
   const [twitchUser, setTwitchUser] = createSignal<TwitchUser | null>(null);
+  const [browsedChannel, setBrowsedChannel] = createSignal<TwitchUser | null>(null);
+  const [customChannelInput, setCustomChannelInput] = createSignal("");
+  const [loadingChannel, setLoadingChannel] = createSignal(false);
   const [vods, setVods] = createSignal<TwitchVod[]>([]);
   const [s3Objects, setS3Objects] = createSignal<S3Object[]>([]);
   const [gdriveFiles, setGdriveFiles] = createSignal<GoogleDriveFile[]>([]);
@@ -97,7 +101,9 @@ export const App: Component = () => {
   const [pipelineStage, setPipelineStage] = createSignal<PipelineStage>("idle");
   const [activeVodId, setActiveVodId] = createSignal<string | null>(null);
   const [downloadProgress, setDownloadProgress] = createSignal<DownloadProgress | null>(null);
-  const [compressionProgress, setCompressionProgress] = createSignal<CompressionProgress | null>(null);
+  const [compressionProgress, setCompressionProgress] = createSignal<CompressionProgress | null>(
+    null,
+  );
   const [s3Progress, setS3Progress] = createSignal<S3TransferProgress | null>(null);
   const [driveProgress, setDriveProgress] = createSignal<DriveTransferProgress | null>(null);
 
@@ -110,8 +116,13 @@ export const App: Component = () => {
     getSettings().match(
       (s) => {
         setSettings(s);
+        if (s.twitch_target_channel) {
+          setCustomChannelInput(s.twitch_target_channel);
+        }
         if (s.twitch_access_token) {
           refreshTwitchUser();
+        } else if (s.twitch_target_channel) {
+          handleSwitchChannel(s.twitch_target_channel);
         }
         if (s.s3_endpoint && s.s3_bucket) {
           refreshS3Objects();
@@ -123,7 +134,7 @@ export const App: Component = () => {
           refreshWebdavFiles();
         }
       },
-      (err) => toast.error(`Failed to load settings: ${err.message}`)
+      (err) => toast.error(`Failed to load settings: ${err.message}`),
     );
 
     // 2. Check FFmpeg availability
@@ -194,8 +205,66 @@ export const App: Component = () => {
   const refreshFfmpegStatus = () => {
     detectFfmpeg().match(
       (info) => setFfmpegInfo(info),
-      () => {}
+      () => {},
     );
+  };
+
+  const refreshVods = (channelOverride?: string) => {
+    setLoadingVods(true);
+    const ch =
+      channelOverride !== undefined
+        ? channelOverride
+        : browsedChannel()?.id ||
+          customChannelInput().trim() ||
+          settings()?.twitch_target_channel ||
+          "";
+
+    listVods(ch || undefined).match(
+      (list) => {
+        setVods(list);
+        setLoadingVods(false);
+      },
+      (err) => {
+        setLoadingVods(false);
+        toast.error(`Failed to fetch VODs: ${err.message}`);
+      },
+    );
+  };
+
+  const handleSwitchChannel = (channelQuery?: string) => {
+    const q = (channelQuery !== undefined ? channelQuery : customChannelInput()).trim();
+    if (!q) {
+      if (twitchUser()) {
+        handleResetToMyChannel();
+      } else {
+        toast.error("Please enter a Twitch channel username or ID");
+      }
+      return;
+    }
+
+    setLoadingChannel(true);
+    resolveChannel(q).match(
+      (u) => {
+        setLoadingChannel(false);
+        setBrowsedChannel(u);
+        setCustomChannelInput(u.login);
+        refreshVods(u.id);
+        toast.success(`Loaded channel @${u.login}`);
+      },
+      (err) => {
+        setLoadingChannel(false);
+        refreshVods(q);
+        toast.error(`Channel lookup notice: ${err.message}`);
+      },
+    );
+  };
+
+  const handleResetToMyChannel = () => {
+    if (!twitchUser()) return;
+    setCustomChannelInput("");
+    setBrowsedChannel(twitchUser());
+    refreshVods(twitchUser()!.id);
+    toast.success(`Switched back to your channel (@${twitchUser()!.login})`);
   };
 
   const refreshTwitchUser = () => {
@@ -204,9 +273,23 @@ export const App: Component = () => {
       (u) => {
         setTwitchUser(u);
         setLoadingUser(false);
-        refreshVods();
+        if (!browsedChannel()) {
+          if (settings()?.twitch_target_channel) {
+            handleSwitchChannel(settings()!.twitch_target_channel);
+          } else {
+            setBrowsedChannel(u);
+            refreshVods(u.id);
+          }
+        } else {
+          refreshVods();
+        }
       },
-      () => setLoadingUser(false)
+      () => {
+        setLoadingUser(false);
+        if (settings()?.twitch_target_channel) {
+          handleSwitchChannel(settings()!.twitch_target_channel);
+        }
+      },
     );
   };
 
@@ -217,12 +300,15 @@ export const App: Component = () => {
         setTwitchUser(user);
         setLoadingUser(false);
         toast.success(`Logged in as @${user.login}`);
+        if (!browsedChannel()) {
+          setBrowsedChannel(user);
+        }
         refreshVods();
       },
       (err) => {
         setLoadingUser(false);
         toast.error(`Twitch login failed: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -239,24 +325,13 @@ export const App: Component = () => {
       () => {
         setSettings(updated);
         setTwitchUser(null);
-        setVods([]);
+        if (browsedChannel() && twitchUser() && browsedChannel()!.id === twitchUser()!.id) {
+          setBrowsedChannel(null);
+          setVods([]);
+        }
         toast.success("Disconnected from Twitch");
       },
-      (err) => toast.error(`Logout failed: ${err.message}`)
-    );
-  };
-
-  const refreshVods = () => {
-    setLoadingVods(true);
-    listVods().match(
-      (list) => {
-        setVods(list);
-        setLoadingVods(false);
-      },
-      (err) => {
-        setLoadingVods(false);
-        toast.error(`Failed to fetch VODs: ${err.message}`);
-      }
+      (err) => toast.error(`Logout failed: ${err.message}`),
     );
   };
 
@@ -267,7 +342,7 @@ export const App: Component = () => {
         setS3Objects(objs);
         setLoadingS3(false);
       },
-      () => setLoadingS3(false)
+      () => setLoadingS3(false),
     );
   };
 
@@ -291,7 +366,7 @@ export const App: Component = () => {
       () => {
         setGdriveQuota(null);
         setLoadingGdriveQuota(false);
-      }
+      },
     );
   };
 
@@ -315,7 +390,7 @@ export const App: Component = () => {
       () => {
         setWebdavQuota(null);
         setLoadingWebdavQuota(false);
-      }
+      },
     );
   };
 
@@ -327,7 +402,7 @@ export const App: Component = () => {
         setGdriveFiles(files);
         setLoadingGdrive(false);
       },
-      () => setLoadingGdrive(false)
+      () => setLoadingGdrive(false),
     );
   };
 
@@ -339,7 +414,7 @@ export const App: Component = () => {
         setWebdavFiles(files);
         setLoadingWebdav(false);
       },
-      () => setLoadingWebdav(false)
+      () => setLoadingWebdav(false),
     );
   };
 
@@ -388,7 +463,7 @@ export const App: Component = () => {
         },
         (err) => {
           toast.error(`Failed to dispatch to Cloud Worker: ${err.message}`);
-        }
+        },
       );
       return;
     }
@@ -421,7 +496,7 @@ export const App: Component = () => {
         setPipelineStage("idle");
         setActiveVodId(null);
         toast.error(`Failed to start local pipeline: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -432,7 +507,7 @@ export const App: Component = () => {
         setActiveVodId(null);
         toast.info("Active task cancelled");
       },
-      (err) => toast.error(`Failed to cancel: ${err.message}`)
+      (err) => toast.error(`Failed to cancel: ${err.message}`),
     );
   };
 
@@ -446,7 +521,7 @@ export const App: Component = () => {
       if (savePath && typeof savePath === "string") {
         downloadS3Vod(key, savePath).match(
           () => toast.success(`Downloading to ${savePath}`),
-          (err) => toast.error(`Download error: ${err.message}`)
+          (err) => toast.error(`Download error: ${err.message}`),
         );
       }
     } catch (e) {
@@ -460,7 +535,7 @@ export const App: Component = () => {
         toast.success(`Deleted ${key} from storage`);
         refreshS3Objects();
       },
-      (err) => toast.error(`Delete failed: ${err.message}`)
+      (err) => toast.error(`Delete failed: ${err.message}`),
     );
   };
 
@@ -473,7 +548,7 @@ export const App: Component = () => {
       if (savePath && typeof savePath === "string") {
         downloadGdriveVod(file.id, file.id, savePath).match(
           () => toast.success(`Downloading ${file.name} to ${savePath}`),
-          (err) => toast.error(`Google Drive download error: ${err.message}`)
+          (err) => toast.error(`Google Drive download error: ${err.message}`),
         );
       }
     } catch (e) {
@@ -487,7 +562,7 @@ export const App: Component = () => {
         toast.success("Deleted file from Google Drive");
         refreshGdriveFiles();
       },
-      (err) => toast.error(`Google Drive delete failed: ${err.message}`)
+      (err) => toast.error(`Google Drive delete failed: ${err.message}`),
     );
   };
 
@@ -500,7 +575,7 @@ export const App: Component = () => {
       if (savePath && typeof savePath === "string") {
         downloadWebdavVod(file.href, file.name, savePath).match(
           () => toast.success(`Downloading ${file.name} to ${savePath}`),
-          (err) => toast.error(`WebDAV download error: ${err.message}`)
+          (err) => toast.error(`WebDAV download error: ${err.message}`),
         );
       }
     } catch (e) {
@@ -514,7 +589,7 @@ export const App: Component = () => {
         toast.success("Deleted file from WebDAV");
         refreshWebdavFiles();
       },
-      (err) => toast.error(`WebDAV delete failed: ${err.message}`)
+      (err) => toast.error(`WebDAV delete failed: ${err.message}`),
     );
   };
 
@@ -535,9 +610,7 @@ export const App: Component = () => {
   };
 
   const isVodArchived = (vodId: string): boolean => {
-    return s3Objects().some(
-      (obj) => obj.key.includes(vodId) || obj.key.endsWith(`${vodId}.mp4`)
-    );
+    return s3Objects().some((obj) => obj.key.includes(vodId) || obj.key.endsWith(`${vodId}.mp4`));
   };
 
   const handleOpenDeleteModal = (vod: TwitchVod) => {
@@ -564,18 +637,14 @@ export const App: Component = () => {
       (v) =>
         v.title.toLowerCase().includes(q) ||
         v.user_name.toLowerCase().includes(q) ||
-        v.id.includes(q)
+        v.id.includes(q),
     );
   };
 
   return (
     <div class="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground select-none font-sans">
       <Toaster position="bottom-right" richColors />
-      <UpdateDialog
-        open={updateOpen()}
-        onOpenChange={setUpdateOpen}
-        updateInfo={updateInfo()}
-      />
+      <UpdateDialog open={updateOpen()} onOpenChange={setUpdateOpen} updateInfo={updateInfo()} />
 
       <WindowTitleBar
         title="Twitch VOD Manager"
@@ -596,7 +665,9 @@ export const App: Component = () => {
                   <span class="iconify mdi--video-vintage size-5" />
                 </div>
                 <div class="flex flex-col leading-tight">
-                  <span class="text-xs font-bold text-foreground font-heading">Twitch VOD Manager</span>
+                  <span class="text-xs font-bold text-foreground font-heading">
+                    Twitch VOD Manager
+                  </span>
                   <span class="text-[10px] text-muted-foreground">Archiver & Cloud Manager</span>
                 </div>
               </div>
@@ -690,9 +761,7 @@ export const App: Component = () => {
                 <Show when={settings()?.worker_url}>
                   <span
                     class={`rounded-full bg-emerald-400 ${
-                      sidebarCollapsed()
-                        ? "absolute top-1.5 right-1.5 size-1.5"
-                        : "size-2"
+                      sidebarCollapsed() ? "absolute top-1.5 right-1.5 size-1.5" : "size-2"
                     }`}
                     title="Worker configured"
                   />
@@ -830,134 +899,250 @@ export const App: Component = () => {
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2">
-                  <Show when={twitchUser()}>
-                    {/* Archive status filters */}
-                    <div class="flex items-center bg-muted/40 p-0.5 rounded-lg border border-border/40 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => setArchiveFilter("all")}
-                        class={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                          archiveFilter() === "all"
-                            ? "bg-card text-foreground shadow-xs font-semibold"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        All ({vods().length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setArchiveFilter("archived")}
-                        class={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all flex items-center gap-1 ${
-                          archiveFilter() === "archived"
-                            ? "bg-card text-emerald-400 shadow-xs font-semibold"
-                            : "text-muted-foreground hover:text-emerald-400"
-                        }`}
-                      >
-                        <span class="iconify mdi--cloud-check size-3" />
-                        Archived
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setArchiveFilter("unarchived")}
-                        class={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                          archiveFilter() === "unarchived"
-                            ? "bg-card text-foreground shadow-xs font-semibold"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        Unarchived
-                      </button>
-                    </div>
+                  {/* Archive status filters */}
+                  <div class="flex items-center bg-muted/40 p-0.5 rounded-lg border border-border/40 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setArchiveFilter("all")}
+                      class={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                        archiveFilter() === "all"
+                          ? "bg-card text-foreground shadow-xs font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      All ({vods().length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setArchiveFilter("archived")}
+                      class={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all flex items-center gap-1 ${
+                        archiveFilter() === "archived"
+                          ? "bg-card text-emerald-400 shadow-xs font-semibold"
+                          : "text-muted-foreground hover:text-emerald-400"
+                      }`}
+                    >
+                      <span class="iconify mdi--cloud-check size-3" />
+                      Archived
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setArchiveFilter("unarchived")}
+                      class={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                        archiveFilter() === "unarchived"
+                          ? "bg-card text-foreground shadow-xs font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Unarchived
+                    </button>
+                  </div>
 
-                    <div class="relative w-48 sm:w-64">
-                      <span class="iconify mdi--magnify absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-                      <input
-                        type="text"
-                        placeholder="Search broadcasts..."
-                        value={vodSearch()}
-                        onInput={(e) => setVodSearch(e.currentTarget.value)}
-                        class="h-8 w-full rounded-md border border-border/60 bg-muted/20 pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  <div class="relative w-44 sm:w-56">
+                    <span class="iconify mdi--magnify absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Search broadcasts..."
+                      value={vodSearch()}
+                      onInput={(e) => setVodSearch(e.currentTarget.value)}
+                      class="h-8 w-full rounded-md border border-border/60 bg-muted/20 pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refreshVods()}
+                    disabled={loadingVods()}
+                    class="gap-1.5 text-xs h-8 font-semibold"
+                  >
+                    <span
+                      class={`iconify mdi--refresh size-3.5 ${loadingVods() ? "animate-spin" : ""}`}
+                    />
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+
+              {/* Channel Selector Bar */}
+              <div class="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl border border-border/60 bg-card/40 backdrop-blur-xs">
+                <div class="flex items-center gap-3 min-w-0">
+                  <Show
+                    when={browsedChannel()}
+                    fallback={
+                      <div class="size-8 rounded-full bg-[#9146FF]/20 text-[#9146FF] flex items-center justify-center shrink-0">
+                        <span class="iconify mdi--twitch size-4" />
+                      </div>
+                    }
+                  >
+                    {(ch) => (
+                      <img
+                        src={ch().profile_image_url}
+                        alt={ch().display_name}
+                        class="size-8 rounded-full object-cover border border-primary/40 shrink-0"
                       />
+                    )}
+                  </Show>
+                  <div class="flex flex-col leading-tight min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-bold text-foreground truncate">
+                        {browsedChannel() ? browsedChannel()!.display_name : "Target Channel"}
+                      </span>
+                      <Show
+                        when={
+                          browsedChannel() &&
+                          twitchUser() &&
+                          browsedChannel()!.id === twitchUser()!.id
+                        }
+                      >
+                        <span class="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+                          My Channel
+                        </span>
+                      </Show>
+                      <Show
+                        when={
+                          browsedChannel() &&
+                          (!twitchUser() || browsedChannel()!.id !== twitchUser()!.id)
+                        }
+                      >
+                        <span class="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">
+                          Custom Channel
+                        </span>
+                      </Show>
                     </div>
+                    <span class="text-[10px] text-muted-foreground truncate">
+                      {browsedChannel()
+                        ? `@${browsedChannel()!.login} (ID: ${browsedChannel()!.id})`
+                        : "Enter channel username or ID to browse VODs"}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2 w-full sm:w-auto">
+                  <div class="relative flex-1 sm:w-56">
+                    <span class="iconify mdi--at absolute left-2.5 top-2 size-3.5 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="e.g. shroud or 12826..."
+                      value={customChannelInput()}
+                      onInput={(e) => setCustomChannelInput(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSwitchChannel();
+                      }}
+                      class="h-7.5 w-full rounded-md border border-border/60 bg-muted/30 pl-7.5 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleSwitchChannel()}
+                    disabled={loadingChannel() || loadingVods()}
+                    class="h-7.5 px-3 text-xs font-semibold gap-1 shrink-0"
+                  >
+                    <span
+                      class={`iconify mdi--arrow-right size-3.5 ${loadingChannel() ? "animate-spin" : ""}`}
+                    />
+                    Switch
+                  </Button>
+                  <Show
+                    when={
+                      twitchUser() && browsedChannel() && browsedChannel()!.id !== twitchUser()!.id
+                    }
+                  >
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={refreshVods}
-                      disabled={loadingVods()}
-                      class="gap-1.5 text-xs h-8 font-semibold"
+                      onClick={handleResetToMyChannel}
+                      class="h-7.5 px-2.5 text-[11px] text-muted-foreground hover:text-foreground shrink-0"
+                      title="Return to your logged-in channel"
                     >
-                      <span
-                        class={`iconify mdi--refresh size-3.5 ${loadingVods() ? "animate-spin" : ""}`}
-                      />
-                      Refresh
+                      My Channel
+                    </Button>
+                  </Show>
+                  <Show when={!twitchUser()}>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleLoginTwitch}
+                      disabled={loadingUser()}
+                      class="h-7.5 px-2.5 text-[11px] bg-[#9146FF] hover:bg-[#772ce8] text-white font-semibold gap-1 shrink-0"
+                      title="Login with your Twitch account"
+                    >
+                      <span class="iconify mdi--twitch size-3" />
+                      Login
                     </Button>
                   </Show>
                 </div>
               </div>
 
               <Show
-                when={twitchUser()}
+                when={!loadingVods() || vods().length > 0}
                 fallback={
-                  <div class="p-16 text-center border border-border/60 rounded-2xl bg-card/40 space-y-4 max-w-md mx-auto my-12 shadow-sm">
-                    <div class="size-14 rounded-2xl bg-[#9146FF]/15 text-[#9146FF] flex items-center justify-center mx-auto">
-                      <span class="iconify mdi--twitch size-8" />
-                    </div>
-                    <div class="space-y-1">
-                      <h3 class="font-bold text-base text-foreground font-heading">
-                        Connect Your Twitch Channel
-                      </h3>
-                      <p class="text-xs text-muted-foreground leading-relaxed">
-                        Log in with Twitch to browse, archive, and process your broadcast history.
-                      </p>
-                    </div>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={handleLoginTwitch}
-                      disabled={loadingUser()}
-                      class="bg-[#9146FF] hover:bg-[#772ce8] text-white gap-2 font-bold shadow-sm"
-                    >
-                      <span class="iconify mdi--twitch size-4" />
-                      {loadingUser() ? "Connecting..." : "Login with Twitch"}
-                    </Button>
+                  <div class="p-16 text-center text-muted-foreground space-y-2">
+                    <span class="iconify mdi--loading animate-spin size-6 text-primary mx-auto" />
+                    <p class="text-xs">Fetching broadcast archives from Twitch API...</p>
                   </div>
                 }
               >
                 <Show
-                  when={!loadingVods() || vods().length > 0}
+                  when={filteredVods().length > 0}
                   fallback={
-                    <div class="p-16 text-center text-muted-foreground space-y-2">
-                      <span class="iconify mdi--loading animate-spin size-6 text-primary mx-auto" />
-                      <p class="text-xs">Fetching broadcast archives from Twitch API...</p>
-                    </div>
-                  }
-                >
-                  <Show
-                    when={filteredVods().length > 0}
-                    fallback={
+                    <Show
+                      when={browsedChannel() || twitchUser()}
+                      fallback={
+                        <div class="p-12 text-center border border-border/60 rounded-2xl bg-card/40 space-y-4 max-w-md mx-auto my-8 shadow-sm">
+                          <div class="size-14 rounded-2xl bg-[#9146FF]/15 text-[#9146FF] flex items-center justify-center mx-auto">
+                            <span class="iconify mdi--twitch size-8" />
+                          </div>
+                          <div class="space-y-1">
+                            <h3 class="font-bold text-base text-foreground font-heading">
+                              Browse & Archive Twitch VODs
+                            </h3>
+                            <p class="text-xs text-muted-foreground leading-relaxed">
+                              Enter any streamer's username or channel ID above to browse their
+                              public broadcasts, or log in with your own account.
+                            </p>
+                          </div>
+                          <div class="flex items-center justify-center gap-3 pt-1">
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={handleLoginTwitch}
+                              disabled={loadingUser()}
+                              class="bg-[#9146FF] hover:bg-[#772ce8] text-white gap-2 font-bold shadow-sm"
+                            >
+                              <span class="iconify mdi--twitch size-4" />
+                              {loadingUser() ? "Connecting..." : "Login with Twitch"}
+                            </Button>
+                          </div>
+                        </div>
+                      }
+                    >
                       <div class="p-12 text-center border border-border/60 rounded-xl bg-card/30 space-y-2">
                         <span class="iconify mdi--video-off-outline size-8 text-muted-foreground mx-auto" />
                         <p class="text-sm font-medium text-foreground">No broadcasts found</p>
                         <p class="text-xs text-muted-foreground">
-                          Make sure "Store past broadcasts" is enabled in your Twitch Dashboard.
+                          {browsedChannel() &&
+                          twitchUser() &&
+                          browsedChannel()!.id === twitchUser()!.id
+                            ? 'Make sure "Store past broadcasts" is enabled in your Twitch Dashboard.'
+                            : `No public broadcast archives found for @${browsedChannel()?.login || "this channel"}.`}
                         </p>
                       </div>
-                    }
-                  >
-                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                      <For each={filteredVods()}>
-                        {(vod) => (
-                          <VodCard
-                            vod={vod}
-                            isArchived={isVodArchived(vod.id)}
-                            onSelect={handleSelectVodForArchive}
-                            onDelete={handleOpenDeleteModal}
-                            isProcessing={pipelineStage() !== "idle" && activeVodId() === vod.id}
-                          />
-                        )}
-                      </For>
-                    </div>
-                  </Show>
+                    </Show>
+                  }
+                >
+                  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <For each={filteredVods()}>
+                      {(vod) => (
+                        <VodCard
+                          vod={vod}
+                          isArchived={isVodArchived(vod.id)}
+                          onSelect={handleSelectVodForArchive}
+                          onDelete={handleOpenDeleteModal}
+                          isProcessing={pipelineStage() !== "idle" && activeVodId() === vod.id}
+                        />
+                      )}
+                    </For>
+                  </div>
                 </Show>
               </Show>
             </div>
@@ -1017,8 +1202,14 @@ export const App: Component = () => {
               onSettingsSaved={(s) => {
                 setSettings(s);
                 refreshFfmpegStatus();
+                if (s.twitch_target_channel) {
+                  setCustomChannelInput(s.twitch_target_channel);
+                }
                 if (s.twitch_access_token) {
                   refreshTwitchUser();
+                } else if (s.twitch_target_channel) {
+                  setTwitchUser(null);
+                  handleSwitchChannel(s.twitch_target_channel);
                 } else {
                   setTwitchUser(null);
                   setVods([]);
@@ -1040,6 +1231,7 @@ export const App: Component = () => {
         defaultPreset={settings()?.encoder_preset}
         defaultCrf={settings()?.crf}
         hasWorkerConfigured={Boolean(settings()?.worker_url)}
+        currentUserId={twitchUser()?.id}
       />
 
       {/* Delete VOD Modal */}
@@ -1059,7 +1251,10 @@ export const App: Component = () => {
         localVideoPath={`${settings()?.output_dir || "C:\\TwitchVODs"}\\${selectedKeyForYouTube().split("/").pop()}`}
         isYouTubeConnected={Boolean(settings()?.youtube_access_token)}
         onYouTubeConnected={() => {
-          getSettings().match((s) => setSettings(s), () => {});
+          getSettings().match(
+            (s) => setSettings(s),
+            () => {},
+          );
           toast.success("YouTube account connected!");
         }}
       />

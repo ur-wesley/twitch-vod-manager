@@ -11,6 +11,7 @@ pub struct AppSettings {
     pub twitch_refresh_token: Option<String>,
     pub twitch_user_id: Option<String>,
     pub twitch_username: Option<String>,
+    pub twitch_target_channel: Option<String>,
 
     pub s3_provider: String, // "cloudflare_r2", "backblaze_b2", "custom"
     pub s3_endpoint: String,
@@ -68,6 +69,7 @@ impl Default for AppSettings {
             twitch_refresh_token: None,
             twitch_user_id: None,
             twitch_username: None,
+            twitch_target_channel: None,
 
             s3_provider: "cloudflare_r2".to_string(),
             s3_endpoint: String::new(),

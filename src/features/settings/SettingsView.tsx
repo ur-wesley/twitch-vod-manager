@@ -106,7 +106,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
         setUpdateInfo(info);
         setUpdateOpen(true);
       },
-      (err) => toast.error(err.message)
+      (err) => toast.error(err.message),
     );
   };
 
@@ -130,7 +130,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
       (err) => {
         setSaving(false);
         toast.error(`Failed to save settings: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -192,7 +192,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
       (err) => {
         setS3TestStatus(`Connection error: ${err.message}`);
         toast.error(`S3 Test Failed: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -209,12 +209,12 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
             setFormData(s);
             props.onSettingsSaved(s);
           },
-          () => {}
+          () => {},
         );
       },
       (err) => {
         toast.error(`Google Drive connection failed: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -228,12 +228,12 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
             setFormData(s);
             props.onSettingsSaved(s);
           },
-          () => {}
+          () => {},
         );
       },
       (err) => {
         toast.error(`Failed to disconnect Google Drive: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -250,12 +250,12 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
             setFormData(s);
             props.onSettingsSaved(s);
           },
-          () => {}
+          () => {},
         );
       },
       (err) => {
         toast.error(`Twitch login failed: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -269,12 +269,12 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
             setFormData(s);
             props.onSettingsSaved(s);
           },
-          () => {}
+          () => {},
         );
       },
       (err) => {
         toast.error(`Failed to disconnect Twitch: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -291,12 +291,12 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
             setFormData(s);
             props.onSettingsSaved(s);
           },
-          () => {}
+          () => {},
         );
       },
       (err) => {
         toast.error(`YouTube connection failed: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -310,12 +310,12 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
             setFormData(s);
             props.onSettingsSaved(s);
           },
-          () => {}
+          () => {},
         );
       },
       (err) => {
         toast.error(`Failed to disconnect YouTube: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -331,13 +331,15 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
     setWebdavTesting(false);
     res.match(
       (files) => {
-        setWebdavTestStatus(`Success! WebDAV server reachable (${files.length} existing files found).`);
+        setWebdavTestStatus(
+          `Success! WebDAV server reachable (${files.length} existing files found).`,
+        );
         toast.success("WebDAV connection verified!");
       },
       (err) => {
         setWebdavTestStatus(`Connection error: ${err.message}`);
         toast.error(`WebDAV Test Failed: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -355,14 +357,16 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
     res.match(
       (st) => {
         setWorkerStatusData(st);
-        setWorkerTestStatus(`Connected! Worker v${st.version} (Uptime: ${Math.floor(st.uptime_secs / 60)}m, Status: ${st.status})`);
+        setWorkerTestStatus(
+          `Connected! Worker v${st.version} (Uptime: ${Math.floor(st.uptime_secs / 60)}m, Status: ${st.status})`,
+        );
         toast.success("VPS Worker connection successful!");
       },
       (err) => {
         setWorkerStatusData(null);
         setWorkerTestStatus(`Failed to connect: ${err.message}`);
         toast.error(`Worker Connection Failed: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -382,7 +386,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
       },
       (err) => {
         toast.error(`Worker Sync Failed: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -406,7 +410,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
           },
           (err) => {
             toast.error(`TOML Import Failed: ${err.message}`);
-          }
+          },
         );
       }
     } catch (e) {
@@ -460,7 +464,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
       },
       (err) => {
         toast.error(`Invalid TOML: ${err.message}`);
-      }
+      },
     );
   };
 
@@ -570,14 +574,18 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
 
             <div class="w-full flex-1 overflow-y-auto pr-1 scrollbar-thin">
               {/* Tab 1: General */}
-              <TabsContent value="general" class="space-y-6 outline-none animate-in fade-in duration-200">
+              <TabsContent
+                value="general"
+                class="space-y-6 outline-none animate-in fade-in duration-200"
+              >
                 <section class="space-y-4 rounded-xl border border-border/60 bg-card/40 p-5">
                   <div class="space-y-1">
                     <h3 class="text-sm font-bold uppercase tracking-wider text-primary">
                       File & Directory Paths
                     </h3>
                     <p class="text-xs text-muted-foreground">
-                      Configure where compressed VODs are saved and where temporary segments are cached.
+                      Configure where compressed VODs are saved and where temporary segments are
+                      cached.
                     </p>
                   </div>
 
@@ -632,7 +640,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         </Button>
                       </div>
                       <p class="text-[10px] text-muted-foreground">
-                        Used to download raw video segments before merging. Automatically cleaned up after processing.
+                        Used to download raw video segments before merging. Automatically cleaned up
+                        after processing.
                       </p>
                     </div>
                   </div>
@@ -662,7 +671,10 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
               </TabsContent>
 
               {/* Tab 2: Tools & System */}
-              <TabsContent value="tools" class="space-y-6 outline-none animate-in fade-in duration-200">
+              <TabsContent
+                value="tools"
+                class="space-y-6 outline-none animate-in fade-in duration-200"
+              >
                 <section class="space-y-4 rounded-xl border border-border/60 bg-card/40 p-5">
                   <div class="flex items-center justify-between">
                     <div class="space-y-1">
@@ -670,7 +682,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         System Tools & Dependencies
                       </h3>
                       <p class="text-xs text-muted-foreground">
-                        Twitch VOD Manager requires FFmpeg for stream extraction, concatenation, and hardware encoding.
+                        Twitch VOD Manager requires FFmpeg for stream extraction, concatenation, and
+                        hardware encoding.
                       </p>
                     </div>
                     <Show when={props.onOpenDownloader}>
@@ -791,21 +804,26 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                       </Button>
                     </div>
                     <p class="text-[10px] text-muted-foreground">
-                      Point to a specific ffmpeg.exe binary if you do not want to use the default app or system version.
+                      Point to a specific ffmpeg.exe binary if you do not want to use the default
+                      app or system version.
                     </p>
                   </div>
                 </section>
               </TabsContent>
 
               {/* Tab 3: Storage (S3) */}
-              <TabsContent value="storage" class="space-y-6 outline-none animate-in fade-in duration-200">
+              <TabsContent
+                value="storage"
+                class="space-y-6 outline-none animate-in fade-in duration-200"
+              >
                 <section class="space-y-4 rounded-xl border border-border/60 bg-card/40 p-5">
                   <div class="space-y-1">
                     <h3 class="text-sm font-bold uppercase tracking-wider text-primary">
                       S3-Compatible Cloud Storage
                     </h3>
                     <p class="text-xs text-muted-foreground">
-                      Archive your processed VODs to Cloudflare R2, Backblaze B2, or any standard AWS S3 endpoint.
+                      Archive your processed VODs to Cloudflare R2, Backblaze B2, or any standard
+                      AWS S3 endpoint.
                     </p>
                   </div>
 
@@ -819,7 +837,10 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         updateField("s3_provider", "cloudflare_r2");
                         updateField("s3_region", "auto");
                         if (!formData().s3_endpoint) {
-                          updateField("s3_endpoint", "https://<account_id>.r2.cloudflarestorage.com");
+                          updateField(
+                            "s3_endpoint",
+                            "https://<account_id>.r2.cloudflarestorage.com",
+                          );
                         }
                       }}
                       class="text-xs font-semibold"
@@ -933,9 +954,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                     </Button>
 
                     <Show when={s3TestStatus()}>
-                      <p class="text-xs font-mono text-muted-foreground">
-                        {s3TestStatus()}
-                      </p>
+                      <p class="text-xs font-mono text-muted-foreground">{s3TestStatus()}</p>
                     </Show>
                   </div>
                 </section>
@@ -962,7 +981,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                       </Show>
                     </div>
                     <p class="text-xs text-muted-foreground">
-                      Upload directly to your Google Drive account using the official Drive API v3 (8 MB chunked resumable upload).
+                      Upload directly to your Google Drive account using the official Drive API v3
+                      (8 MB chunked resumable upload).
                     </p>
                   </div>
 
@@ -992,12 +1012,14 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         onClick={handleLoginGdrive}
                         class="text-xs font-bold gap-1.5 bg-amber-600 hover:bg-amber-700 text-white"
                       >
-                        <span class={`iconify mdi--google-drive size-4 ${gdriveLoggingIn() ? "animate-spin" : ""}`} />
+                        <span
+                          class={`iconify mdi--google-drive size-4 ${gdriveLoggingIn() ? "animate-spin" : ""}`}
+                        />
                         {gdriveLoggingIn()
                           ? "Waiting for Browser Auth..."
                           : formData().gdrive_access_token
-                          ? "Re-authenticate Drive"
-                          : "Connect Google Drive"}
+                            ? "Re-authenticate Drive"
+                            : "Connect Google Drive"}
                       </Button>
 
                       <Show when={formData().gdrive_access_token}>
@@ -1024,14 +1046,18 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         onClick={() => setShowAdvancedGdrive(!showAdvancedGdrive())}
                         class="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors cursor-pointer"
                       >
-                        <span class={`iconify mdi--chevron-right size-3.5 transition-transform ${showAdvancedGdrive() ? "rotate-90" : ""}`} />
+                        <span
+                          class={`iconify mdi--chevron-right size-3.5 transition-transform ${showAdvancedGdrive() ? "rotate-90" : ""}`}
+                        />
                         Advanced: Custom Google Cloud Credentials (Optional)
                       </button>
 
                       <Show when={showAdvancedGdrive()}>
                         <div class="mt-3 p-3.5 rounded-lg border border-border/50 bg-muted/20 space-y-3">
                           <p class="text-[10px] text-muted-foreground">
-                            By default, the app uses built-in desktop application credentials. If you have your own Google Cloud project, you can provide custom credentials below.
+                            By default, the app uses built-in desktop application credentials. If
+                            you have your own Google Cloud project, you can provide custom
+                            credentials below.
                           </p>
                           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div class="space-y-1">
@@ -1042,7 +1068,9 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                                 type="text"
                                 value={formData().gdrive_client_id || ""}
                                 placeholder="e.g. 123456789-abc.apps.googleusercontent.com"
-                                onInput={(e) => updateField("gdrive_client_id", e.currentTarget.value)}
+                                onInput={(e) =>
+                                  updateField("gdrive_client_id", e.currentTarget.value)
+                                }
                                 class="bg-muted/30 font-mono text-xs"
                               />
                             </div>
@@ -1054,7 +1082,9 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                                 type="password"
                                 value={formData().gdrive_client_secret || ""}
                                 placeholder="Client Secret"
-                                onInput={(e) => updateField("gdrive_client_secret", e.currentTarget.value)}
+                                onInput={(e) =>
+                                  updateField("gdrive_client_secret", e.currentTarget.value)
+                                }
                                 class="bg-muted/30 font-mono text-xs"
                               />
                             </div>
@@ -1073,7 +1103,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                       WebDAV / Nextcloud / NAS Storage
                     </h3>
                     <p class="text-xs text-muted-foreground">
-                      Upload directly to your Nextcloud, ownCloud, Synology, QNAP, or any standard WebDAV server.
+                      Upload directly to your Nextcloud, ownCloud, Synology, QNAP, or any standard
+                      WebDAV server.
                     </p>
                   </div>
 
@@ -1146,21 +1177,24 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                       onClick={handleTestWebdav}
                       class="text-xs font-bold gap-1.5"
                     >
-                      <span class={`iconify mdi--connection size-4 ${webdavTesting() ? "animate-spin" : ""}`} />
+                      <span
+                        class={`iconify mdi--connection size-4 ${webdavTesting() ? "animate-spin" : ""}`}
+                      />
                       {webdavTesting() ? "Testing Connection..." : "Test WebDAV Connection"}
                     </Button>
 
                     <Show when={webdavTestStatus()}>
-                      <p class="text-xs font-mono text-muted-foreground">
-                        {webdavTestStatus()}
-                      </p>
+                      <p class="text-xs font-mono text-muted-foreground">{webdavTestStatus()}</p>
                     </Show>
                   </div>
                 </section>
               </TabsContent>
 
               {/* Tab 4: Encoding */}
-              <TabsContent value="encoding" class="space-y-6 outline-none animate-in fade-in duration-200">
+              <TabsContent
+                value="encoding"
+                class="space-y-6 outline-none animate-in fade-in duration-200"
+              >
                 <section class="space-y-3 rounded-xl border border-border/60 bg-card/40 p-5">
                   <button
                     type="button"
@@ -1182,19 +1216,21 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         </h4>
                         <ul class="text-[11px] text-muted-foreground space-y-1 list-disc pl-4">
                           <li>
-                            Prefer <span class="font-semibold text-foreground">H.264 (x264)</span> — max
-                            YouTube compatibility; HEVC is often re-encoded or rejected in some workflows.
+                            Prefer <span class="font-semibold text-foreground">H.264 (x264)</span> —
+                            max YouTube compatibility; HEVC is often re-encoded or rejected in some
+                            workflows.
                           </li>
                           <li>
-                            CRF <span class="font-semibold text-foreground">18–20</span> for near-source
-                            upload quality (lower = larger / better).
+                            CRF <span class="font-semibold text-foreground">18–20</span> for
+                            near-source upload quality (lower = larger / better).
                           </li>
                           <li>
-                            Avoid <span class="font-semibold text-foreground">Passthrough</span> unless
-                            the source is already H.264 at a solid bitrate.
+                            Avoid <span class="font-semibold text-foreground">Passthrough</span>{" "}
+                            unless the source is already H.264 at a solid bitrate.
                           </li>
                           <li>
-                            Upload a clean high-quality master; YouTube builds the ABR ladder from it.
+                            Upload a clean high-quality master; YouTube builds the ABR ladder from
+                            it.
                           </li>
                         </ul>
                       </div>
@@ -1205,17 +1241,20 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         </h4>
                         <ul class="text-[11px] text-muted-foreground space-y-1 list-disc pl-4">
                           <li>
-                            Use <span class="font-semibold text-foreground">Passthrough</span> to keep the
-                            Twitch source as-is — no re-encode, instant finish, disk = source size.
+                            Use <span class="font-semibold text-foreground">Passthrough</span> to
+                            keep the Twitch source as-is — no re-encode, instant finish, disk =
+                            source size.
                           </li>
                           <li>
-                            Long-term archive: <span class="font-semibold text-foreground">HEVC NVENC</span>{" "}
-                            (or x265) + CRF <span class="font-semibold text-foreground">24–28</span> — small
+                            Long-term archive:{" "}
+                            <span class="font-semibold text-foreground">HEVC NVENC</span> (or x265)
+                            + CRF <span class="font-semibold text-foreground">24–28</span> — small
                             files, fast with GPU.
                           </li>
                           <li>
                             Re-encode <span class="font-semibold text-foreground">once</span> after
-                            download, then upload/archive that file — don't re-encode per destination.
+                            download, then upload/archive that file — don't re-encode per
+                            destination.
                           </li>
                         </ul>
                       </div>
@@ -1309,7 +1348,10 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
               </TabsContent>
 
               {/* Tab 5: Accounts */}
-              <TabsContent value="accounts" class="space-y-6 outline-none animate-in fade-in duration-200 pb-8">
+              <TabsContent
+                value="accounts"
+                class="space-y-6 outline-none animate-in fade-in duration-200 pb-8"
+              >
                 <section class="space-y-4 rounded-xl border border-border/60 bg-card/40 p-5">
                   <div class="space-y-1">
                     <h3 class="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
@@ -1317,7 +1359,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                       Connected Accounts & Integrations
                     </h3>
                     <p class="text-xs text-muted-foreground">
-                      Own Client ID + Secret required (fields below or env). Redirects: Twitch :17563 · YouTube :17564 · Drive :17565
+                      Own Client ID + Secret required (fields below or env). Redirects: Twitch
+                      :17563 · YouTube :17564 · Drive :17565
                     </p>
                   </div>
 
@@ -1329,7 +1372,9 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                       onClick={handleLoginTwitch}
                       class="bg-[#9146FF] hover:bg-[#772ce8] text-white font-bold gap-2 text-xs"
                     >
-                      <span class={`iconify mdi--twitch size-4 ${twitchLoggingIn() ? "animate-spin" : ""}`} />
+                      <span
+                        class={`iconify mdi--twitch size-4 ${twitchLoggingIn() ? "animate-spin" : ""}`}
+                      />
                       {formData().twitch_access_token ? "Re-auth Twitch" : "Login Twitch"}
                     </Button>
                     <Button
@@ -1339,7 +1384,9 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                       onClick={handleLoginYouTube}
                       class="bg-red-600 hover:bg-red-700 text-white font-bold gap-2 text-xs"
                     >
-                      <span class={`iconify mdi--youtube size-4 ${youtubeLoggingIn() ? "animate-spin" : ""}`} />
+                      <span
+                        class={`iconify mdi--youtube size-4 ${youtubeLoggingIn() ? "animate-spin" : ""}`}
+                      />
                       {formData().youtube_access_token ? "Re-auth YouTube" : "Login YouTube"}
                     </Button>
                     <Button
@@ -1349,7 +1396,9 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                       onClick={handleLoginGdrive}
                       class="bg-amber-600 hover:bg-amber-700 text-white font-bold gap-2 text-xs"
                     >
-                      <span class={`iconify mdi--google-drive size-4 ${gdriveLoggingIn() ? "animate-spin" : ""}`} />
+                      <span
+                        class={`iconify mdi--google-drive size-4 ${gdriveLoggingIn() ? "animate-spin" : ""}`}
+                      />
                       {formData().gdrive_access_token ? "Re-auth Drive" : "Connect Drive"}
                     </Button>
                   </div>
@@ -1380,7 +1429,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                               </Show>
                             </div>
                             <p class="text-xs text-muted-foreground">
-                              Browse broadcast archives, fetch chat replay logs, and queue automated downloads.
+                              Browse broadcast archives, fetch chat replay logs, and queue automated
+                              downloads.
                             </p>
                           </div>
                         </div>
@@ -1408,12 +1458,14 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                           onClick={handleLoginTwitch}
                           class="bg-[#9146FF] hover:bg-[#772ce8] text-white font-bold gap-2 text-xs"
                         >
-                          <span class={`iconify mdi--twitch size-4 ${twitchLoggingIn() ? "animate-spin" : ""}`} />
+                          <span
+                            class={`iconify mdi--twitch size-4 ${twitchLoggingIn() ? "animate-spin" : ""}`}
+                          />
                           {twitchLoggingIn()
                             ? "Opening Browser Auth..."
                             : formData().twitch_access_token
-                            ? "Re-authenticate Twitch"
-                            : "Login with Twitch"}
+                              ? "Re-authenticate Twitch"
+                              : "Login with Twitch"}
                         </Button>
 
                         <Show when={formData().twitch_access_token}>
@@ -1429,13 +1481,34 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         </Show>
                       </div>
 
+                      <div class="space-y-1.5 pt-2">
+                        <label class="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                          Default Target Channel / Broadcaster ID (Optional)
+                        </label>
+                        <Input
+                          type="text"
+                          value={formData().twitch_target_channel || ""}
+                          placeholder="e.g. shroud, riotgames, or numeric ID (leave empty to use your logged-in channel)"
+                          onInput={(e) =>
+                            updateField("twitch_target_channel", e.currentTarget.value)
+                          }
+                          class="bg-muted/30 font-mono text-xs"
+                        />
+                        <p class="text-[10px] text-muted-foreground">
+                          Enter any Twitch username or channel ID to browse that channel's public
+                          VODs by default.
+                        </p>
+                      </div>
+
                       <div class="pt-1">
                         <button
                           type="button"
                           onClick={() => setShowAdvancedTwitch(!showAdvancedTwitch())}
                           class="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors cursor-pointer"
                         >
-                          <span class={`iconify mdi--chevron-right size-3.5 transition-transform ${showAdvancedTwitch() ? "rotate-90" : ""}`} />
+                          <span
+                            class={`iconify mdi--chevron-right size-3.5 transition-transform ${showAdvancedTwitch() ? "rotate-90" : ""}`}
+                          />
                           Twitch Developer Credentials (required for login)
                         </button>
 
@@ -1451,7 +1524,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                               >
                                 Twitch Developer Console
                               </a>{" "}
-                              application. Add this OAuth Redirect URL exactly (http, no trailing slash):
+                              application. Add this OAuth Redirect URL exactly (http, no trailing
+                              slash):
                             </p>
                             <code class="block text-[10px] font-mono bg-muted/40 px-2 py-1.5 rounded break-all select-all">
                               http://localhost:17563/auth/callback
@@ -1465,7 +1539,9 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                                   type="text"
                                   value={formData().twitch_client_id}
                                   placeholder="Twitch Client ID"
-                                  onInput={(e) => updateField("twitch_client_id", e.currentTarget.value)}
+                                  onInput={(e) =>
+                                    updateField("twitch_client_id", e.currentTarget.value)
+                                  }
                                   class="bg-muted/30 font-mono text-xs"
                                 />
                               </div>
@@ -1477,7 +1553,9 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                                   type="password"
                                   value={formData().twitch_client_secret}
                                   placeholder="Twitch Client Secret"
-                                  onInput={(e) => updateField("twitch_client_secret", e.currentTarget.value)}
+                                  onInput={(e) =>
+                                    updateField("twitch_client_secret", e.currentTarget.value)
+                                  }
                                   class="bg-muted/30 font-mono text-xs"
                                 />
                               </div>
@@ -1511,7 +1589,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                               </Show>
                             </div>
                             <p class="text-xs text-muted-foreground">
-                              Publish processed broadcasts directly to your YouTube channel in 1 click.
+                              Publish processed broadcasts directly to your YouTube channel in 1
+                              click.
                             </p>
                           </div>
                         </div>
@@ -1526,12 +1605,14 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                           onClick={handleLoginYouTube}
                           class="bg-red-600 hover:bg-red-700 text-white font-bold gap-2 text-xs"
                         >
-                          <span class={`iconify mdi--youtube size-4 ${youtubeLoggingIn() ? "animate-spin" : ""}`} />
+                          <span
+                            class={`iconify mdi--youtube size-4 ${youtubeLoggingIn() ? "animate-spin" : ""}`}
+                          />
                           {youtubeLoggingIn()
                             ? "Opening Browser Auth..."
                             : formData().youtube_access_token
-                            ? "Re-authenticate YouTube"
-                            : "Login with YouTube"}
+                              ? "Re-authenticate YouTube"
+                              : "Login with YouTube"}
                         </Button>
 
                         <Show when={formData().youtube_access_token}>
@@ -1553,14 +1634,17 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                           onClick={() => setShowAdvancedYouTube(!showAdvancedYouTube())}
                           class="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors cursor-pointer"
                         >
-                          <span class={`iconify mdi--chevron-right size-3.5 transition-transform ${showAdvancedYouTube() ? "rotate-90" : ""}`} />
+                          <span
+                            class={`iconify mdi--chevron-right size-3.5 transition-transform ${showAdvancedYouTube() ? "rotate-90" : ""}`}
+                          />
                           YouTube Google Cloud Credentials (required for login)
                         </button>
 
                         <Show when={showAdvancedYouTube()}>
                           <div class="mt-3 p-3.5 rounded-lg border border-border/50 bg-muted/20 space-y-3">
                             <p class="text-[10px] text-muted-foreground">
-                              Create a Desktop OAuth client in Google Cloud Console. Redirect URI exactly:
+                              Create a Desktop OAuth client in Google Cloud Console. Redirect URI
+                              exactly:
                             </p>
                             <code class="block text-[10px] font-mono bg-muted/40 px-2 py-1.5 rounded break-all select-all">
                               http://localhost:17564/auth/callback
@@ -1574,7 +1658,9 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                                   type="text"
                                   value={formData().youtube_client_id || ""}
                                   placeholder="Google Client ID"
-                                  onInput={(e) => updateField("youtube_client_id", e.currentTarget.value)}
+                                  onInput={(e) =>
+                                    updateField("youtube_client_id", e.currentTarget.value)
+                                  }
                                   class="bg-muted/30 font-mono text-xs"
                                 />
                               </div>
@@ -1586,7 +1672,9 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                                   type="password"
                                   value={formData().youtube_client_secret || ""}
                                   placeholder="Google Client Secret"
-                                  onInput={(e) => updateField("youtube_client_secret", e.currentTarget.value)}
+                                  onInput={(e) =>
+                                    updateField("youtube_client_secret", e.currentTarget.value)
+                                  }
                                   class="bg-muted/30 font-mono text-xs"
                                 />
                               </div>
@@ -1605,7 +1693,9 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                           </div>
                           <div>
                             <div class="flex items-center gap-2">
-                              <h4 class="text-sm font-bold text-foreground">Google Drive Storage</h4>
+                              <h4 class="text-sm font-bold text-foreground">
+                                Google Drive Storage
+                              </h4>
                               <Show
                                 when={formData().gdrive_access_token}
                                 fallback={
@@ -1620,7 +1710,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                               </Show>
                             </div>
                             <p class="text-xs text-muted-foreground">
-                              Upload and archive full stream recordings to Google Drive with resumable 8 MB chunked transfers.
+                              Upload and archive full stream recordings to Google Drive with
+                              resumable 8 MB chunked transfers.
                             </p>
                           </div>
                         </div>
@@ -1635,12 +1726,14 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                           onClick={handleLoginGdrive}
                           class="bg-amber-600 hover:bg-amber-700 text-white font-bold gap-2 text-xs"
                         >
-                          <span class={`iconify mdi--google-drive size-4 ${gdriveLoggingIn() ? "animate-spin" : ""}`} />
+                          <span
+                            class={`iconify mdi--google-drive size-4 ${gdriveLoggingIn() ? "animate-spin" : ""}`}
+                          />
                           {gdriveLoggingIn()
                             ? "Opening Browser Auth..."
                             : formData().gdrive_access_token
-                            ? "Re-authenticate Drive"
-                            : "Connect Google Drive"}
+                              ? "Re-authenticate Drive"
+                              : "Connect Google Drive"}
                         </Button>
 
                         <Show when={formData().gdrive_access_token}>
@@ -1661,7 +1754,10 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
               </TabsContent>
 
               {/* Tab: Cloud Worker (VPS) */}
-              <TabsContent value="worker" class="space-y-6 outline-none animate-in fade-in duration-200">
+              <TabsContent
+                value="worker"
+                class="space-y-6 outline-none animate-in fade-in duration-200"
+              >
                 {/* Connection Section */}
                 <section class="space-y-4 rounded-xl border border-border/60 bg-card/40 p-5">
                   <div class="space-y-1">
@@ -1670,7 +1766,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                       VPS Cloud Worker Connection
                     </h3>
                     <p class="text-xs text-muted-foreground">
-                      Connect your self-hosted background worker running on your VPS or remote server.
+                      Connect your self-hosted background worker running on your VPS or remote
+                      server.
                     </p>
                   </div>
 
@@ -1687,7 +1784,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         class="bg-muted/30 font-mono text-xs"
                       />
                       <p class="text-[10px] text-muted-foreground">
-                        The public or LAN endpoint where your Docker container / Rust binary is listening.
+                        The public or LAN endpoint where your Docker container / Rust binary is
+                        listening.
                       </p>
                     </div>
 
@@ -1722,7 +1820,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         class="bg-muted/30 font-mono text-xs"
                       />
                       <p class="text-[10px] text-muted-foreground">
-                        Cap for files in the worker completed folder. New jobs are refused when full. Sync to apply.
+                        Cap for files in the worker completed folder. New jobs are refused when
+                        full. Sync to apply.
                       </p>
                     </div>
 
@@ -1735,7 +1834,9 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         onClick={handleTestWorker}
                         class="gap-1.5 text-xs font-semibold"
                       >
-                        <span class={`iconify mdi--lan-connect size-3.5 ${workerTesting() ? "animate-spin" : ""}`} />
+                        <span
+                          class={`iconify mdi--lan-connect size-3.5 ${workerTesting() ? "animate-spin" : ""}`}
+                        />
                         {workerTesting() ? "Testing Connection..." : "Test Worker Connection"}
                       </Button>
 
@@ -1747,35 +1848,47 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         onClick={handleSyncWorker}
                         class="gap-1.5 text-xs font-semibold"
                       >
-                        <span class={`iconify mdi--sync size-3.5 ${workerSyncing() ? "animate-spin" : ""}`} />
+                        <span
+                          class={`iconify mdi--sync size-3.5 ${workerSyncing() ? "animate-spin" : ""}`}
+                        />
                         {workerSyncing() ? "Syncing..." : "Sync Settings to VPS"}
                       </Button>
                     </div>
 
                     <Show when={workerTestStatus()}>
-                      <div class={`p-3 rounded-lg border text-xs flex items-start gap-2 ${
-                        workerStatusData()
-                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                          : "bg-destructive/10 border-destructive/30 text-destructive"
-                      }`}>
-                        <span class={`iconify size-4 shrink-0 mt-0.5 ${
-                          workerStatusData() ? "mdi--check-circle" : "mdi--alert-circle"
-                        }`} />
+                      <div
+                        class={`p-3 rounded-lg border text-xs flex items-start gap-2 ${
+                          workerStatusData()
+                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                            : "bg-destructive/10 border-destructive/30 text-destructive"
+                        }`}
+                      >
+                        <span
+                          class={`iconify size-4 shrink-0 mt-0.5 ${
+                            workerStatusData() ? "mdi--check-circle" : "mdi--alert-circle"
+                          }`}
+                        />
                         <div class="space-y-1">
                           <p class="font-medium">{workerTestStatus()}</p>
                           <Show when={workerStatusData()}>
                             <p class="text-[11px] opacity-80">
-                              CPU: {workerStatusData()?.cpu_usage_percent.toFixed(1)}% •
-                              RAM: {workerStatusData()?.memory_used_mb}MB / {workerStatusData()?.memory_total_mb}MB •
-                              Active Jobs: {workerStatusData()?.active_jobs_count} •
-                              Storage: {(workerStatusData()?.storage_free_gb ?? 0).toFixed(1)}GB free of {workerStatusData()?.storage_max_gb ?? 100}GB
-                              <span class="opacity-70"> (host disk {(workerStatusData()?.disk_free_gb ?? 0).toFixed(1)}GB free)</span>
+                              CPU: {workerStatusData()?.cpu_usage_percent.toFixed(1)}% • RAM:{" "}
+                              {workerStatusData()?.memory_used_mb}MB /{" "}
+                              {workerStatusData()?.memory_total_mb}MB • Active Jobs:{" "}
+                              {workerStatusData()?.active_jobs_count} • Storage:{" "}
+                              {(workerStatusData()?.storage_free_gb ?? 0).toFixed(1)}GB free of{" "}
+                              {workerStatusData()?.storage_max_gb ?? 100}GB
+                              <span class="opacity-70">
+                                {" "}
+                                (host disk {(workerStatusData()?.disk_free_gb ?? 0).toFixed(1)}GB
+                                free)
+                              </span>
                             </p>
                             <p class="text-[11px] opacity-80">
-                              Creds: Twitch {workerStatusData()?.has_twitch ? "ok" : "—"} ·
-                              S3 {workerStatusData()?.has_s3 ? "ok" : "—"} ·
-                              GDrive {workerStatusData()?.has_gdrive ? "ok" : "—"} ·
-                              WebDAV {workerStatusData()?.has_webdav ? "ok" : "—"}
+                              Creds: Twitch {workerStatusData()?.has_twitch ? "ok" : "—"} · S3{" "}
+                              {workerStatusData()?.has_s3 ? "ok" : "—"} · GDrive{" "}
+                              {workerStatusData()?.has_gdrive ? "ok" : "—"} · WebDAV{" "}
+                              {workerStatusData()?.has_webdav ? "ok" : "—"}
                             </p>
                           </Show>
                         </div>
@@ -1792,7 +1905,9 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                       Autonomous Channel Watcher (24/7 VPS Background Archival)
                     </h3>
                     <p class="text-xs text-muted-foreground">
-                      Let your VPS monitor your channel 24/7. When a live stream ends, the worker automatically downloads, encodes, and archives the VOD without needing this desktop app running.
+                      Let your VPS monitor your channel 24/7. When a live stream ends, the worker
+                      automatically downloads, encodes, and archives the VOD without needing this
+                      desktop app running.
                     </p>
                   </div>
 
@@ -1801,7 +1916,9 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                       <input
                         type="checkbox"
                         checked={formData().auto_archive_enabled || false}
-                        onChange={(e) => updateField("auto_archive_enabled", e.currentTarget.checked)}
+                        onChange={(e) =>
+                          updateField("auto_archive_enabled", e.currentTarget.checked)
+                        }
                         class="mt-0.5 rounded border-border text-primary focus:ring-primary size-4"
                       />
                       <div class="space-y-0.5">
@@ -1809,7 +1926,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                           Enable 24/7 Autonomous Archiving
                         </span>
                         <p class="text-[11px] text-muted-foreground">
-                          The worker server will autonomously poll Twitch periodically and queue any newly finished broadcast archive.
+                          The worker server will autonomously poll Twitch periodically and queue any
+                          newly finished broadcast archive.
                         </p>
                       </div>
                     </label>
@@ -1843,20 +1961,26 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                     How to deploy your VPS worker
                   </div>
                   <p class="text-[11px] text-muted-foreground leading-relaxed">
-                    Deploying the worker takes less than 2 minutes via Docker Compose on any Ubuntu / Debian VPS. Open the <strong>Cloud Workers</strong> tab in the sidebar and click <strong>Setup Guide</strong> for step-by-step instructions.
+                    Deploying the worker takes less than 2 minutes via Docker Compose on any Ubuntu
+                    / Debian VPS. Open the <strong>Cloud Workers</strong> tab in the sidebar and
+                    click <strong>Setup Guide</strong> for step-by-step instructions.
                   </p>
                 </section>
               </TabsContent>
 
               {/* Tab: Data & TOML Import/Export */}
-              <TabsContent value="toml" class="space-y-6 outline-none animate-in fade-in duration-200">
+              <TabsContent
+                value="toml"
+                class="space-y-6 outline-none animate-in fade-in duration-200"
+              >
                 <section class="space-y-4 rounded-xl border border-border/60 bg-card/40 p-5">
                   <div class="space-y-1">
                     <h3 class="text-sm font-bold uppercase tracking-wider text-primary">
                       TOML Configuration & Backup
                     </h3>
                     <p class="text-xs text-muted-foreground">
-                      Import, export, or edit your complete settings file using standard human-readable TOML.
+                      Import, export, or edit your complete settings file using standard
+                      human-readable TOML.
                     </p>
                   </div>
 
@@ -1871,7 +1995,9 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                         <span class="iconify mdi--upload size-4 text-primary" />
                         Import TOML File
                       </div>
-                      <span class="text-[10px] text-muted-foreground">Load settings from .toml</span>
+                      <span class="text-[10px] text-muted-foreground">
+                        Load settings from .toml
+                      </span>
                     </Button>
 
                     <Button
@@ -1939,7 +2065,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
               Raw TOML Settings Editor
             </DialogTitle>
             <DialogDescription class="text-xs text-muted-foreground">
-              Review or paste your TOML configuration below. Pressing Apply will validate and update your settings immediately.
+              Review or paste your TOML configuration below. Pressing Apply will validate and update
+              your settings immediately.
             </DialogDescription>
           </DialogHeader>
 
@@ -1954,12 +2081,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
           </div>
 
           <DialogFooter class="flex items-center justify-between">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setRawTomlOpen(false)}
-              class="text-xs"
-            >
+            <Button variant="ghost" size="sm" onClick={() => setRawTomlOpen(false)} class="text-xs">
               Cancel
             </Button>
             <Button
@@ -1976,11 +2098,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
         </DialogContent>
       </Dialog>
 
-      <UpdateDialog
-        open={updateOpen()}
-        onOpenChange={setUpdateOpen}
-        updateInfo={updateInfo()}
-      />
+      <UpdateDialog open={updateOpen()} onOpenChange={setUpdateOpen} updateInfo={updateInfo()} />
     </div>
   );
 };

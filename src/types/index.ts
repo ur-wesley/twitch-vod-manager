@@ -54,6 +54,7 @@ export interface AppSettings {
   twitch_refresh_token?: string;
   twitch_user_id?: string;
   twitch_username?: string;
+  twitch_target_channel?: string;
 
   s3_provider: string;
   s3_endpoint: string;
@@ -210,7 +211,15 @@ export interface WorkerJob {
   id: string;
   vod_id: string;
   title: string;
-  status: "queued" | "downloading" | "compressing" | "uploading_s3" | "uploading_youtube" | "completed" | "failed" | "cancelled";
+  status:
+    | "queued"
+    | "downloading"
+    | "compressing"
+    | "uploading_s3"
+    | "uploading_youtube"
+    | "completed"
+    | "failed"
+    | "cancelled";
   stage: string;
   progress_percent: number;
   local_path?: string;
