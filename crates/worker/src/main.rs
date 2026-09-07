@@ -43,6 +43,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db_path = data_dir.join("worker.db");
     let database = Arc::new(Database::new(&db_path)?);
 
+    // Clean up and recover any jobs that were interrupted when worker was previously stopped or restarted
+    match database.recover_interrupted_jobs() {
+        Ok(count) if count > 0 => {
+            info!("🔄 Recovered {} interrupted job(s) from previous worker session (marked failed/interrupted)", count);
+        }
+        Ok(_) => {}
+        Err(e) => {
+            tracing::warn!("Failed to check/recover interrupted jobs on startup: {}", e);
+        }
+    }
+
     let state = AppState::new(database, api_key.clone(), data_dir);
 
     // Spawn autonomous channel watcher loop in background

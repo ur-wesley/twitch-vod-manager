@@ -112,6 +112,10 @@ pub struct CreateJobRequest {
     pub duration_secs: Option<f64>,
     pub start_secs: Option<f64>,
     pub end_secs: Option<f64>,
+    #[serde(default)]
+    pub vod_date: Option<String>,
+    #[serde(default)]
+    pub custom_filename: Option<String>,
 
     // Configurable destinations
     pub save_local: Option<bool>,
@@ -571,6 +575,9 @@ async fn create_job_handler(
         duration_secs: payload.duration_secs,
         start_secs: payload.start_secs,
         end_secs: payload.end_secs,
+        title: Some(payload.title),
+        vod_date: payload.vod_date,
+        custom_filename: payload.custom_filename,
         save_local,
         local_output_dir: Some(state.data_dir.join("completed").to_string_lossy().to_string()),
         upload_to_s3: payload.upload_to_s3.unwrap_or(false),
@@ -606,9 +613,31 @@ async fn cancel_job_handler(
     if let Some(token) = active.get(&id) {
         token.store(true, Ordering::Relaxed);
         let _ = state.db.update_job_status(&id, "cancelling", "cancelling", 0.0, None);
+        state.db.append_log(&id, "⚠️ Cancellation requested by user");
         Ok(StatusCode::OK)
     } else {
-        Err(StatusCode::NOT_FOUND)
+        drop(active);
+        match state.db.get_job(&id) {
+            Ok(Some(job)) => {
+                if job.status == "completed" || job.status == "failed" || job.status == "cancelled" {
+                    // Already in terminal state, return OK (idempotent)
+                    Ok(StatusCode::OK)
+                } else {
+                    // Zombie job in DB that is not actively running in memory
+                    let _ = state.db.update_job_status(
+                        &id,
+                        "cancelled",
+                        "cancelled",
+                        job.progress_percent,
+                        Some("Job cancelled by user (worker task was no longer active)"),
+                    );
+                    state.db.append_log(&id, "⚠️ Job cancelled: worker task was no longer active in memory");
+                    Ok(StatusCode::OK)
+                }
+            }
+            Ok(None) => Err(StatusCode::NOT_FOUND),
+            Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+        }
     }
 }
 
@@ -616,6 +645,13 @@ async fn delete_job_handler(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
+    // If the job is actively running in memory, signal cancellation first
+    {
+        let active = state.active_cancellations.read().await;
+        if let Some(token) = active.get(&id) {
+            token.store(true, Ordering::Relaxed);
+        }
+    }
     state
         .db
         .delete_job(&id)

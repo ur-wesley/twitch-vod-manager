@@ -172,13 +172,25 @@ pub fn spawn_worker_job(state: AppState, job_id: String, config: PipelineConfig)
             &format!("🚀 Job #{} initialized for VOD {}", job_id_clone, config.vod_id),
         );
 
-        let result = run_archive_pipeline(
+        let runner_handle = tokio::spawn(run_archive_pipeline(
             reporter,
             config,
             Some(temp_dir),
             is_cancelled.clone(),
-        )
-        .await;
+        ));
+
+        let result = match runner_handle.await {
+            Ok(pipeline_result) => pipeline_result,
+            Err(join_err) => {
+                if join_err.is_panic() {
+                    Err(vod_core::AppError::Pipeline(format!("Worker pipeline panicked: {:?}", join_err)))
+                } else if join_err.is_cancelled() {
+                    Err(vod_core::AppError::Cancelled)
+                } else {
+                    Err(vod_core::AppError::Pipeline(format!("Worker pipeline join error: {:?}", join_err)))
+                }
+            }
+        };
 
         match result {
             Ok(res) => {

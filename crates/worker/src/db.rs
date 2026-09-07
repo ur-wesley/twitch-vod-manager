@@ -141,6 +141,44 @@ impl Database {
         Ok(())
     }
 
+    pub fn recover_interrupted_jobs(&self) -> Result<usize, rusqlite::Error> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn.lock().unwrap();
+
+        // Find IDs of any jobs that are in non-terminal states
+        let mut stmt = conn.prepare(
+            "SELECT id FROM jobs WHERE status NOT IN ('completed', 'failed', 'cancelled')",
+        )?;
+        let job_ids: Vec<String> = stmt
+            .query_map([], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        if job_ids.is_empty() {
+            return Ok(0);
+        }
+
+        conn.execute(
+            "UPDATE jobs SET status = 'failed', stage = 'interrupted', error = 'Worker process restarted while job was in progress', updated_at = ?1
+             WHERE status NOT IN ('completed', 'failed', 'cancelled')",
+            params![now],
+        )?;
+
+        // Append log to each recovered job
+        for id in &job_ids {
+            let _ = conn.execute(
+                "INSERT INTO job_logs (job_id, message, timestamp) VALUES (?1, ?2, ?3)",
+                params![
+                    id,
+                    "⚠️ Job marked as interrupted: Worker process restarted while job was in progress",
+                    now
+                ],
+            );
+        }
+
+        Ok(job_ids.len())
+    }
+
     pub fn append_log(&self, job_id: &str, message: &str) {
         let now = Utc::now().to_rfc3339();
         if let Ok(conn) = self.conn.lock() {
@@ -273,5 +311,47 @@ impl Database {
             }
         }
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_recover_interrupted_jobs() {
+        let temp_dir = std::env::temp_dir().join(format!("test_db_{}", uuid::Uuid::new_v4()));
+        let db_path = temp_dir.join("worker.db");
+        let db = Database::new(&db_path).unwrap();
+
+        // 1. Insert jobs in various states
+        db.insert_job("job-1", "101", "Stream 1", "downloading").unwrap();
+        db.insert_job("job-2", "102", "Stream 2", "compressing").unwrap();
+        db.insert_job("job-3", "103", "Stream 3", "completed").unwrap();
+        let _ = db.update_job_status("job-3", "completed", "completed", 100.0, None);
+
+        // 2. Recover interrupted jobs
+        let recovered_count = db.recover_interrupted_jobs().unwrap();
+        assert_eq!(recovered_count, 2);
+
+        // 3. Verify status of recovered jobs
+        let j1 = db.get_job("job-1").unwrap().unwrap();
+        assert_eq!(j1.status, "failed");
+        assert_eq!(j1.stage, "interrupted");
+        assert!(j1.error.unwrap().contains("restarted"));
+
+        let j2 = db.get_job("job-2").unwrap().unwrap();
+        assert_eq!(j2.status, "failed");
+        assert_eq!(j2.stage, "interrupted");
+
+        // 4. Completed job was not touched
+        let j3 = db.get_job("job-3").unwrap().unwrap();
+        assert_eq!(j3.status, "completed");
+
+        // 5. Subsequent run recovers 0
+        let recovered_again = db.recover_interrupted_jobs().unwrap();
+        assert_eq!(recovered_again, 0);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
