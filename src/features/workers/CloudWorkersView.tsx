@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "~/components/ui/dialog";
 import { Skeleton } from "~/components/ui/skeleton";
-import { formatEta } from "~/lib/utils";
+import { formatEta, formatVodFilename } from "~/lib/utils";
 import {
   onWorkerDownloadProgress,
   workerCancelJob,
@@ -285,7 +285,9 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
   };
 
   const handleDownloadFromVPS = (job: WorkerJob) => {
-    const filename = `vod_${job.vod_id}.mp4`;
+    const filename = job.local_path
+      ? job.local_path.split(/[/\\]/).pop() || formatVodFilename(job.vod_id, job.title, job.created_at)
+      : formatVodFilename(job.vod_id, job.title, job.created_at);
     const outDir = props.settings.output_dir || "C:\\Users\\parac\\Videos";
     const dest = `${outDir}\\${filename}`;
 
@@ -331,6 +333,13 @@ export const CloudWorkersView: Component<CloudWorkersViewProps> = (props) => {
         return <Badge variant="destructive">Failed</Badge>;
       case "cancelled":
         return <Badge variant="secondary">Cancelled</Badge>;
+      case "cancelling":
+        return (
+          <Badge variant="outline" class="gap-1 text-amber-400 border-amber-500/30 bg-amber-500/10">
+            <span class="i-mdi-loading animate-spin size-3" />
+            Cancelling...
+          </Badge>
+        );
       case "queued":
         return <Badge variant="outline">Queued</Badge>;
       default:

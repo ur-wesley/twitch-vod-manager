@@ -13,6 +13,7 @@ import { Input } from "~/components/ui/input";
 import {
   formatApproxDuration,
   formatSecondsToTimestamp,
+  formatVodFilename,
   parseTimestampToSeconds,
   parseTwitchDuration,
 } from "~/lib/utils";
@@ -30,6 +31,8 @@ export interface ArchiveModalConfirmConfig {
   target: "local" | "worker";
   vodId: string;
   title: string;
+  vodDate?: string;
+  customFilename?: string;
   playlistUrl: string;
   preset: string;
   crf: number;
@@ -81,6 +84,11 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
 
   const [preset, setPreset] = createSignal(initialPreset());
   const [crf, setCrf] = createSignal(props.defaultCrf || 24);
+  const [vodTitle, setVodTitle] = createSignal("");
+  const previewFilename = () =>
+    props.vod
+      ? formatVodFilename(props.vod.id, vodTitle() || props.vod.title, props.vod.created_at)
+      : "";
 
   // Auto-adapt preset if local hardware has specific GPU and no default preset was set
   createEffect(() => {
@@ -301,6 +309,7 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
     if (props.isOpen && v) {
       setLoadingQualities(true);
       setErrorMsg("");
+      setVodTitle(v.title || "");
       setYtTitle(`[VOD] ${v.title}`);
       setStartInput("");
       setStopInput("");
@@ -416,7 +425,7 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
 
     const ytMeta: YouTubeVideoMetadata | undefined = doUploadYouTube
       ? {
-          title: ytTitle() || props.vod.title,
+          title: ytTitle() || vodTitle().trim() || props.vod.title,
           description: `Twitch broadcast archive for ${props.vod.title}.\nOriginally streamed on Twitch.\n\n#Twitch #VOD`,
           privacy_status: ytPrivacy(),
           tags: ytTags()
@@ -429,7 +438,9 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
     props.onConfirm({
       target: props.hasWorkerConfigured ? target() : "local",
       vodId: props.vod.id,
-      title: props.vod.title,
+      title: vodTitle().trim() || props.vod.title,
+      vodDate: props.vod.created_at,
+      customFilename: previewFilename(),
       playlistUrl: selectedQualityUrl(),
       preset: preset(),
       crf: crf(),
@@ -743,6 +754,33 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
                 </span>
               </div>
             </Show>
+          </div>
+
+          {/* VOD Title & File Name Section */}
+          <div class="rounded-xl border border-border/70 bg-card/50 p-3 space-y-2">
+            <div class="space-y-1">
+              <label class="text-xs font-semibold text-foreground flex items-center justify-between">
+                <span class="flex items-center gap-1.5">
+                  <span class="i-mdi-format-title text-primary size-4" />
+                  VOD Title & File Name
+                </span>
+                <span class="text-[10px] text-muted-foreground">Chronological date prefix</span>
+              </label>
+              <Input
+                type="text"
+                value={vodTitle()}
+                onInput={(e) => setVodTitle(e.currentTarget.value)}
+                class="h-8 text-xs"
+                placeholder="VOD Title"
+              />
+            </div>
+            <div class="flex items-center gap-2 text-[11px] text-muted-foreground bg-background/80 px-2.5 py-1.5 rounded-lg border border-border/40 font-mono">
+              <span class="i-mdi-file-video text-primary size-4 shrink-0" aria-hidden="true" />
+              <span class="text-muted-foreground shrink-0 font-sans font-medium text-[10px]">Output file:</span>
+              <span class="text-foreground truncate select-all" title={previewFilename()}>
+                {previewFilename()}
+              </span>
+            </div>
           </div>
 
           {/* Target Engine Selection */}

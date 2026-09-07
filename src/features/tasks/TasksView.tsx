@@ -81,6 +81,34 @@ export function recordLocalTask(task: LocalTaskRecord) {
   saveLocalTasksHistory(list.slice(0, 50));
 }
 
+export function isTaskActive(status: string): boolean {
+  return status !== "completed" && status !== "failed" && status !== "cancelled";
+}
+
+export function reconcileLocalTasks(activeVodId: string | null, stage: PipelineStage): LocalTaskRecord[] {
+  const list = getLocalTasksHistory();
+  let modified = false;
+  const updated = list.map((task) => {
+    if (task.status === "running") {
+      if (stage === "idle" || (activeVodId && task.vod_id !== activeVodId)) {
+        modified = true;
+        return {
+          ...task,
+          status: "cancelled" as const,
+          stage: "cancelled",
+          error: task.error || "Interrupted (application closed or restarted)",
+          completed_at: task.completed_at || new Date().toISOString(),
+        };
+      }
+    }
+    return task;
+  });
+  if (modified) {
+    saveLocalTasksHistory(updated);
+  }
+  return updated;
+}
+
 export interface TasksViewProps {
   settings: AppSettings;
   pipelineStage: PipelineStage;
@@ -94,7 +122,9 @@ export interface TasksViewProps {
 }
 
 export const TasksView: Component<TasksViewProps> = (props) => {
-  const [localTasks, setLocalTasks] = createSignal<LocalTaskRecord[]>(getLocalTasksHistory());
+  const [localTasks, setLocalTasks] = createSignal<LocalTaskRecord[]>(
+    reconcileLocalTasks(props.activeVodId, props.pipelineStage),
+  );
   const [workerJobs, setWorkerJobs] = createSignal<WorkerJob[]>([]);
   const [loadingWorkerJobs, setLoadingWorkerJobs] = createSignal(false);
 
@@ -127,7 +157,7 @@ export const TasksView: Component<TasksViewProps> = (props) => {
   };
 
   const refreshAll = () => {
-    setLocalTasks(getLocalTasksHistory());
+    setLocalTasks(reconcileLocalTasks(props.activeVodId, props.pipelineStage));
     if (workerConfigured()) {
       void refreshWorkerJobs();
     }
@@ -135,16 +165,22 @@ export const TasksView: Component<TasksViewProps> = (props) => {
 
   onMount(() => {
     refreshAll();
+    let idleCounter = 0;
     const interval = setInterval(() => {
-      // Refresh local tasks from storage
-      setLocalTasks(getLocalTasksHistory());
+      // Reconcile and refresh local tasks
+      setLocalTasks(reconcileLocalTasks(props.activeVodId, props.pipelineStage));
       // Poll worker jobs if worker is configured
       if (workerConfigured()) {
-        const hasActiveWorker = workerJobs().some(
-          (j) => j.status === "queued" || j.status === "downloading" || j.status === "compressing" || j.status === "uploading_s3" || j.status === "uploading_youtube",
-        );
+        const hasActiveWorker = workerJobs().some((j) => isTaskActive(j.status));
         if (hasActiveWorker || props.pipelineStage !== "idle") {
+          idleCounter = 0;
           void refreshWorkerJobs();
+        } else {
+          // Poll every 4th tick (~14s) when idle to discover background watcher-queued jobs
+          idleCounter = (idleCounter + 1) % 4;
+          if (idleCounter === 0) {
+            void refreshWorkerJobs();
+          }
         }
       }
     }, 3500);
@@ -181,7 +217,10 @@ export const TasksView: Component<TasksViewProps> = (props) => {
     );
   };
 
-  const handleDeleteWorkerJob = async (jobId: string) => {
+  const handleDeleteWorkerJob = async (jobId: string, isActiveJob = false) => {
+    if (isActiveJob && !confirm("This job is currently marked active or stuck. Are you sure you want to force-delete this job record from the worker?")) {
+      return;
+    }
     const url = props.settings?.worker_url?.trim();
     if (!url) return;
     const res = await workerDeleteJob(url, props.settings?.worker_api_key, jobId);
@@ -206,21 +245,46 @@ export const TasksView: Component<TasksViewProps> = (props) => {
   };
 
   const handleClearLocalHistory = () => {
-    const active = localTasks().filter((t) => t.status === "running");
+    const active = props.pipelineStage !== "idle"
+      ? localTasks().filter((t) => t.status === "running" && t.vod_id === props.activeVodId)
+      : [];
     saveLocalTasksHistory(active);
     setLocalTasks(active);
     toast.success("Cleared local task history");
   };
 
+  const handleDeleteLocalTask = (taskId: string) => {
+    const updated = localTasks().filter((t) => t.id !== taskId);
+    saveLocalTasksHistory(updated);
+    setLocalTasks(updated);
+    toast.success("Local task record removed");
+  };
+
+  const handleCancelLocalTask = (taskId: string) => {
+    if (props.pipelineStage !== "idle") {
+      props.onCancelPipeline();
+    }
+    const updated = localTasks().map((t) => {
+      if (t.id === taskId) {
+        return {
+          ...t,
+          status: "cancelled" as const,
+          stage: "cancelled",
+          error: "Cancelled by user",
+          completed_at: new Date().toISOString(),
+        };
+      }
+      return t;
+    });
+    saveLocalTasksHistory(updated);
+    setLocalTasks(updated);
+    toast.info("Local task marked as cancelled");
+  };
+
   // Aggregated task metrics
   const isLocalActive = () => props.pipelineStage !== "idle";
   const activeWorkerJobsCount = () =>
-    workerJobs().filter(
-      (j) =>
-        j.status !== "completed" &&
-        j.status !== "failed" &&
-        j.status !== "cancelled",
-    ).length;
+    workerJobs().filter((j) => isTaskActive(j.status)).length;
   const totalActiveTasks = () => (isLocalActive() ? 1 : 0) + activeWorkerJobsCount();
 
   const completedCount = () =>
@@ -240,7 +304,7 @@ export const TasksView: Component<TasksViewProps> = (props) => {
     return workerJobs().filter((job) => {
       // Status filter
       if (statusFilter() === "active") {
-        if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") return false;
+        if (!isTaskActive(job.status)) return false;
       } else if (statusFilter() === "completed" && job.status !== "completed") {
         return false;
       } else if (statusFilter() === "failed" && job.status !== "failed") {
@@ -283,6 +347,12 @@ export const TasksView: Component<TasksViewProps> = (props) => {
         return <Badge variant="destructive" class="gap-1 text-[11px]"><span class="i-mdi-alert-circle size-3" /> Failed</Badge>;
       case "cancelled":
         return <Badge variant="secondary" class="gap-1 text-[11px]"><span class="i-mdi-close-circle size-3" /> Cancelled</Badge>;
+      case "cancelling":
+        return (
+          <Badge variant="outline" class="gap-1 text-[11px] text-amber-400 border-amber-500/30 bg-amber-500/10">
+            <span class="i-mdi-loading animate-spin size-3" /> Cancelling...
+          </Badge>
+        );
       case "queued":
         return <Badge variant="outline" class="gap-1 text-[11px]"><span class="i-mdi-clock-outline size-3" /> Queued</Badge>;
       default:
@@ -606,6 +676,32 @@ export const TasksView: Component<TasksViewProps> = (props) => {
                         </span>
                       </Show>
                     </div>
+
+                    {/* Actions for Local Task */}
+                    <div class="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                      <Show when={task.status === "running" && props.pipelineStage === "idle"}>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleCancelLocalTask(task.id)}
+                          class="h-7 text-xs px-2 gap-1"
+                          title="Mark orphaned local task as cancelled"
+                        >
+                          <span class="i-mdi-stop size-3.5" />
+                          Cancel
+                        </Button>
+                      </Show>
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteLocalTask(task.id)}
+                        class="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        title="Delete task record"
+                      >
+                        <span class="i-mdi-trash-can-outline size-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -727,17 +823,15 @@ export const TasksView: Component<TasksViewProps> = (props) => {
                         </Button>
                       </Show>
 
-                      <Show when={!isActive()}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteWorkerJob(job.id)}
-                          class="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                          title="Delete job record"
-                        >
-                          <span class="i-mdi-trash-can-outline size-3.5" />
-                        </Button>
-                      </Show>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteWorkerJob(job.id, isActive())}
+                        class="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        title={isActive() ? "Force-delete active/stuck job record" : "Delete job record"}
+                      >
+                        <span class="i-mdi-trash-can-outline size-3.5" />
+                      </Button>
                     </div>
                   </div>
                 );
