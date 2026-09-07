@@ -211,6 +211,9 @@ pub async fn download_vod_chunks(
             let mut bytes_data = Vec::new();
 
             while attempts < 3 {
+                if is_cancelled.load(Ordering::Relaxed) {
+                    return Err(AppError::Cancelled);
+                }
                 attempts += 1;
                 match client.get(chunk_url.as_str()).send().await {
                     Ok(resp) if resp.status().is_success() => {
@@ -291,21 +294,40 @@ pub async fn download_vod_chunks(
         handles.push(handle);
     }
 
-    // Await all chunk download tasks
-    for handle in handles {
+    // Await all chunk download tasks, aborting siblings on first cancellation/failure
+    let mut download_error = None;
+    for handle in &mut handles {
+        if is_cancelled.load(Ordering::Relaxed) && download_error.is_none() {
+            download_error = Some(AppError::Cancelled);
+            break;
+        }
+
         match handle.await {
             Ok(Ok(())) => {}
-            Ok(Err(AppError::Cancelled)) => return Err(AppError::Cancelled),
+            Ok(Err(AppError::Cancelled)) => {
+                download_error = Some(AppError::Cancelled);
+                break;
+            }
             Ok(Err(e)) => {
                 reporter.report_log(vod_id, &format!("❌ Chunk download task failed: {}", e));
-                return Err(e);
+                download_error = Some(e);
+                break;
             }
             Err(e) => {
                 let err_msg = format!("Task panicked: {}", e);
                 reporter.report_log(vod_id, &format!("❌ {}", err_msg));
-                return Err(AppError::Download(err_msg));
+                download_error = Some(AppError::Download(err_msg));
+                break;
             }
         }
+    }
+
+    if let Some(err) = download_error {
+        // Abort all remaining handles so tasks don't linger in the background
+        for handle in &handles {
+            handle.abort();
+        }
+        return Err(err);
     }
 
     if is_cancelled.load(Ordering::Relaxed) {

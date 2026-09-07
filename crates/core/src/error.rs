@@ -59,6 +59,9 @@ pub enum AppError {
     #[error("WebDAV storage error: {0}")]
     WebDav(String),
 
+    #[error("Pipeline error: {0}")]
+    Pipeline(String),
+
     #[error("Cancelled")]
     Cancelled,
 }
@@ -77,6 +80,7 @@ impl From<AppError> for StableError {
             AppError::YouTube(msg) => StableError::new("YOUTUBE_ERROR", msg),
             AppError::Drive(msg) => StableError::new("DRIVE_ERROR", msg),
             AppError::WebDav(msg) => StableError::new("WEBDAV_ERROR", msg),
+            AppError::Pipeline(msg) => StableError::new("PIPELINE_ERROR", msg),
             AppError::Cancelled => StableError::new("CANCELLED", "Operation was cancelled"),
         }
     }

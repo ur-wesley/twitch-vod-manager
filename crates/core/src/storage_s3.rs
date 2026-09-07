@@ -41,6 +41,26 @@ fn get_signature_key(key: &str, date: &str, region: &str, service: &str) -> Vec<
     hmac_sha256(&k_service, b"aws4_request")
 }
 
+pub fn uri_encode_path_segments(path: &str) -> String {
+    path.split('/')
+        .map(|segment| {
+            let mut encoded = String::with_capacity(segment.len());
+            for b in segment.bytes() {
+                match b {
+                    b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                        encoded.push(b as char);
+                    }
+                    _ => {
+                        encoded.push_str(&format!("%{:02X}", b));
+                    }
+                }
+            }
+            encoded
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 pub fn sign_s3_request(
     method: &str,
     endpoint: &str,
@@ -63,11 +83,12 @@ pub fn sign_s3_request(
 
     let host = clean_endpoint.to_string();
 
-    let canonical_uri = if path.starts_with('/') {
+    let raw_path = if path.starts_with('/') {
         format!("/{}{}", bucket, path)
     } else {
         format!("/{}/{}", bucket, path)
     };
+    let canonical_uri = uri_encode_path_segments(&raw_path);
 
     let canonical_headers = format!(
         "host:{}\nx-amz-content-sha256:{}\nx-amz-date:{}\n",
@@ -367,4 +388,41 @@ pub async fn delete_s3_object(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_uri_encode_path_segments() {
+        assert_eq!(
+            uri_encode_path_segments("vods/2026-09-06 - Stream Title [123].mp4"),
+            "vods/2026-09-06%20-%20Stream%20Title%20%5B123%5D.mp4"
+        );
+        assert_eq!(
+            uri_encode_path_segments("/mybucket/vods/normal.mp4"),
+            "/mybucket/vods/normal.mp4"
+        );
+    }
+
+    #[test]
+    fn test_sign_s3_request_with_spaces_and_brackets() {
+        let (headers, url) = sign_s3_request(
+            "PUT",
+            "s3.eu-central-1.amazonaws.com",
+            "mybucket",
+            "vods/2026-09-06 - Stream Title [123].mp4",
+            "",
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "eu-central-1",
+            "TEST_ACCESS",
+            "TEST_SECRET",
+        );
+        assert!(headers.contains_key("Authorization"));
+        assert_eq!(
+            url,
+            "https://s3.eu-central-1.amazonaws.com/mybucket/vods/2026-09-06%20-%20Stream%20Title%20%5B123%5D.mp4"
+        );
+    }
 }
