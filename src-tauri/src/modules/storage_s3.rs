@@ -42,6 +42,26 @@ fn get_signature_key(key: &str, date: &str, region: &str, service: &str) -> Vec<
     hmac_sha256(&k_service, b"aws4_request")
 }
 
+pub fn uri_encode_path_segments(path: &str) -> String {
+    path.split('/')
+        .map(|segment| {
+            let mut encoded = String::with_capacity(segment.len());
+            for b in segment.bytes() {
+                match b {
+                    b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                        encoded.push(b as char);
+                    }
+                    _ => {
+                        encoded.push_str(&format!("%{:02X}", b));
+                    }
+                }
+            }
+            encoded
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn sign_s3_request(
     method: &str,
@@ -65,11 +85,12 @@ pub fn sign_s3_request(
 
     let host = clean_endpoint.to_string();
 
-    let canonical_uri = if path.starts_with('/') {
+    let raw_path = if path.starts_with('/') {
         format!("/{}{}", bucket, path)
     } else {
         format!("/{}/{}", bucket, path)
     };
+    let canonical_uri = uri_encode_path_segments(&raw_path);
 
     let canonical_headers = format!(
         "host:{}\nx-amz-content-sha256:{}\nx-amz-date:{}\n",
