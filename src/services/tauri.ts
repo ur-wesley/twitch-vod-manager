@@ -99,6 +99,9 @@ export interface StartPipelineArgs {
   durationSecs?: number;
   startSecs?: number;
   endSecs?: number;
+  title?: string;
+  vodDate?: string;
+  customFilename?: string;
   saveLocal?: boolean;
   uploadToS3?: boolean;
   uploadToGdrive?: boolean;
@@ -117,6 +120,9 @@ export const startPipeline = (args: StartPipelineArgs): ResultAsync<string, Stab
     durationSecs: args.durationSecs,
     startSecs: args.startSecs,
     endSecs: args.endSecs,
+    title: args.title,
+    vodDate: args.vodDate,
+    customFilename: args.customFilename,
     saveLocal: args.saveLocal ?? true,
     uploadToS3: args.uploadToS3 ?? true,
     uploadToGdrive: args.uploadToGdrive ?? false,
@@ -229,6 +235,8 @@ export interface WorkerDispatchJobArgs {
   durationSecs?: number;
   startSecs?: number;
   endSecs?: number;
+  vodDate?: string;
+  customFilename?: string;
   saveLocal?: boolean;
   uploadToS3?: boolean;
   uploadToGdrive?: boolean;
@@ -254,6 +262,8 @@ export const workerDispatchJob = (
     durationSecs: args.durationSecs,
     startSecs: args.startSecs,
     endSecs: args.endSecs,
+    vodDate: args.vodDate,
+    customFilename: args.customFilename,
     saveLocal: args.saveLocal,
     uploadToS3: args.uploadToS3,
     uploadToGdrive: args.uploadToGdrive,

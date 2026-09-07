@@ -208,3 +208,78 @@ export function estimateCompressionDuration(
   });
   return res.compressionSecs;
 }
+
+/**
+ * Sanitize a string for safe use in filenames across Windows, macOS, and Linux.
+ */
+export function sanitizeFilename(name: string): string {
+  if (!name) return "";
+  // Replace slashes, colons, pipes with ' - '
+  let cleaned = name.replace(/[/\\:|]+/g, " - ");
+  // Remove or replace problematic characters *, ?, ", <, >
+  cleaned = cleaned.replace(/[*?"<>]+/g, " ");
+  // Collapse whitespace
+  cleaned = cleaned.replace(/\s+/g, " ").trim();
+  // Collapse repeated dashes
+  cleaned = cleaned.replace(/-\s*-+/g, "-");
+  cleaned = cleaned.replace(/--+/g, "-");
+  cleaned = cleaned.replace(/\s*-\s*/g, " - ");
+  // Trim leading/trailing dashes, dots, spaces, underscores
+  cleaned = cleaned.replace(/^[\s.\-_]+|[\s.\-_]+$/g, "");
+  // Limit length to 100 characters
+  if (cleaned.length > 100) {
+    cleaned = cleaned.slice(0, 100).replace(/^[\s.\-_]+|[\s.\-_]+$/g, "");
+  }
+  const reserved = [
+    "CON", "PRN", "AUX", "NUL",
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+  ];
+  if (reserved.includes(cleaned.toUpperCase())) {
+    return `${cleaned}_vod`;
+  }
+  return cleaned;
+}
+
+/**
+ * Format a descriptive, sortable VOD filename with date prefix YYYY-MM-DD.
+ * e.g. "2026-09-06 - Stream Title [123456789].mp4"
+ */
+export function formatVodFilename(
+  vodId: string,
+  title?: string,
+  dateStr?: string,
+  customFilename?: string,
+): string {
+  if (customFilename && customFilename.trim()) {
+    const clean = customFilename.trim().replace(/\.mp4$/i, "");
+    const sanitized = sanitizeFilename(clean);
+    if (sanitized) return `${sanitized}.mp4`;
+  }
+
+  let datePart: string | undefined;
+  if (dateStr && dateStr.trim().length >= 10) {
+    const candidate = dateStr.trim().slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(candidate)) {
+      datePart = candidate;
+    }
+  }
+
+  const cleanTitle = title ? sanitizeFilename(title) : "";
+  const cleanId = vodId ? vodId.trim() : "";
+
+  if (datePart && cleanTitle) {
+    return cleanId
+      ? `${datePart} - ${cleanTitle} [${cleanId}].mp4`
+      : `${datePart} - ${cleanTitle}.mp4`;
+  }
+  if (datePart && !cleanTitle) {
+    return cleanId
+      ? `${datePart} - Twitch VOD [${cleanId}].mp4`
+      : `${datePart} - Twitch VOD.mp4`;
+  }
+  if (!datePart && cleanTitle) {
+    return cleanId ? `${cleanTitle} [${cleanId}].mp4` : `${cleanTitle}.mp4`;
+  }
+  return cleanId ? `vod_${cleanId}.mp4` : "vod.mp4";
+}

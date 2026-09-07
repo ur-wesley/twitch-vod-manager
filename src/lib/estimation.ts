@@ -217,10 +217,10 @@ export function estimateDownloadMetrics(
 let memoryStore: Record<string, string> = {};
 
 function getLocalStorage(): Storage {
-  if (typeof window !== "undefined" && window.localStorage) {
+  if (typeof window !== "undefined" && typeof window.localStorage?.removeItem === "function") {
     return window.localStorage;
   }
-  if (typeof globalThis !== "undefined" && (globalThis as unknown as { localStorage?: Storage }).localStorage) {
+  if (typeof globalThis !== "undefined" && typeof (globalThis as unknown as { localStorage?: Storage }).localStorage?.removeItem === "function") {
     return (globalThis as unknown as { localStorage: Storage }).localStorage;
   }
   return {

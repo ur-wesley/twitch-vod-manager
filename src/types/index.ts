@@ -250,10 +250,14 @@ export interface WorkerJob {
     | "downloading"
     | "compressing"
     | "uploading_s3"
+    | "uploading_gdrive"
+    | "uploading_webdav"
     | "uploading_youtube"
+    | "cancelling"
     | "completed"
     | "failed"
-    | "cancelled";
+    | "cancelled"
+    | (string & {});
   stage: string;
   progress_percent: number;
   local_path?: string;
