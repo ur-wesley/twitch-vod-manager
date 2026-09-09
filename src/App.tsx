@@ -18,7 +18,7 @@ import { ArchiveModal, type ArchiveModalConfirmConfig } from "~/features/vods/Ar
 import { DeleteVodModal } from "~/features/vods/DeleteVodModal";
 import { VodCard } from "~/features/vods/VodCard";
 import { CloudWorkersView } from "~/features/workers/CloudWorkersView";
-import { TasksView, recordLocalTask } from "~/features/tasks/TasksView";
+import { TasksView, attachYoutubeVideoId, recordLocalTask } from "~/features/tasks/TasksView";
 import {
   cancelActiveTask,
   checkForUpdates,
@@ -43,6 +43,7 @@ import {
   onDownloadProgress,
   onDriveUploadProgress,
   onS3UploadProgress,
+  onYouTubeUploadProgress,
   saveSettings,
   resolveChannel,
   startPipeline,
@@ -183,6 +184,7 @@ export const App: Component = () => {
     let unlistenCp: (() => void) | undefined;
     let unlistenS3: (() => void) | undefined;
     let unlistenDrive: (() => void) | undefined;
+    let unlistenYoutube: (() => void) | undefined;
 
     onDownloadProgress((p) => {
       if (!acceptPipelineProgress(activeVodId(), p.vod_id)) return;
@@ -241,11 +243,18 @@ export const App: Component = () => {
       }
     }).then((un) => (unlistenDrive = un));
 
+    onYouTubeUploadProgress((p) => {
+      if (p.video_id) {
+        attachYoutubeVideoId(p.vod_id, p.video_id);
+      }
+    }).then((un) => (unlistenYoutube = un));
+
     onCleanup(() => {
       if (unlistenDl) unlistenDl();
       if (unlistenCp) unlistenCp();
       if (unlistenS3) unlistenS3();
       if (unlistenDrive) unlistenDrive();
+      if (unlistenYoutube) unlistenYoutube();
     });
   });
 

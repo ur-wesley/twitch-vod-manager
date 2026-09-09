@@ -16,6 +16,7 @@ import {
   formatVodFilename,
   parseTimestampToSeconds,
   parseTwitchDuration,
+  sanitizeYoutubeTitle,
 } from "~/lib/utils";
 import { estimateJobDuration, parseResolutionAndFps } from "~/lib/estimation";
 import { getQualities, workerGetStatus } from "~/services/tauri";
@@ -365,7 +366,7 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
       setLoadingQualities(true);
       setErrorMsg("");
       setVodTitle(v.title || "");
-      setYtTitle(`[VOD] ${v.title}`);
+      setYtTitle(sanitizeYoutubeTitle(`[VOD] ${v.title}`));
       setStartInput("");
       setStopInput("");
       setPlayerCurrentTime(0);
@@ -464,7 +465,9 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
 
     const ytMeta: YouTubeVideoMetadata | undefined = doUploadYouTube
       ? {
-          title: ytTitle() || vodTitle().trim() || props.vod.title,
+          title: sanitizeYoutubeTitle(
+            ytTitle() || vodTitle().trim() || props.vod.title,
+          ),
           description: `Twitch broadcast archive for ${props.vod.title}.\nOriginally streamed on Twitch.\n\n#Twitch #VOD`,
           privacy_status: ytPrivacy(),
           tags: ytTags()
@@ -1151,14 +1154,20 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
                 <Show when={uploadToYouTube()}>
                   <div class="ml-6 p-2.5 rounded-lg border bg-muted/30 space-y-2">
                     <div class="space-y-1">
-                      <label class="text-[11px] font-semibold text-foreground">
-                        YouTube Video Title
-                      </label>
+                      <div class="flex items-center justify-between">
+                        <label class="text-[11px] font-semibold text-foreground">
+                          YouTube Video Title
+                        </label>
+                        <span class="text-[10px] text-muted-foreground">
+                          {Array.from(ytTitle()).length}/100
+                        </span>
+                      </div>
                       <Input
                         value={ytTitle()}
                         onInput={(e) => setYtTitle(e.currentTarget.value)}
                         class="h-8 text-xs"
                         placeholder="Video Title"
+                        maxLength={100}
                       />
                     </div>
 

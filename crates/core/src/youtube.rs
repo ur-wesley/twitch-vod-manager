@@ -224,6 +224,46 @@ pub async fn refresh_youtube_token(
     Ok(token_data.access_token)
 }
 
+pub fn sanitize_youtube_title(title: &str) -> Result<String, AppError> {
+    let mut cleaned: String = title
+        .trim()
+        .chars()
+        .filter(|c| !c.is_control())
+        .map(|c| if c == '<' || c == '>' { ' ' } else { c })
+        .collect();
+
+    let words: Vec<&str> = cleaned.split_whitespace().collect();
+    cleaned = words.join(" ");
+
+    if cleaned.is_empty() {
+        return Err(AppError::YouTube(
+            "YouTube video title is empty or invalid after sanitization".into(),
+        ));
+    }
+
+    if cleaned.chars().count() > 100 {
+        cleaned = cleaned.chars().take(100).collect();
+        cleaned = cleaned.trim_end().to_string();
+    }
+
+    if cleaned.is_empty() {
+        return Err(AppError::YouTube(
+            "YouTube video title is empty or invalid after sanitization".into(),
+        ));
+    }
+
+    Ok(cleaned)
+}
+
+pub fn sanitize_youtube_description(description: &str) -> String {
+    let cleaned: String = description.chars().filter(|c| !c.is_control()).collect();
+    if cleaned.chars().count() > 5000 {
+        cleaned.chars().take(5000).collect()
+    } else {
+        cleaned
+    }
+}
+
 pub fn validate_youtube_credentials(credentials: &YouTubeCredentials) -> Result<(), AppError> {
     let has_access = !credentials.access_token.trim().is_empty();
     let has_refresh = credentials
@@ -269,12 +309,15 @@ pub async fn upload_video_to_youtube(
     let file_metadata = tokio::fs::metadata(video_path).await?;
     let total_bytes = file_metadata.len();
 
+    let title = sanitize_youtube_title(&metadata.title)?;
+    let description = sanitize_youtube_description(&metadata.description);
+
     // 1. Initiate Resumable Upload
     let init_url = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status";
     let body_json = serde_json::json!({
         "snippet": {
-            "title": metadata.title,
-            "description": metadata.description,
+            "title": title,
+            "description": description,
             "tags": metadata.tags,
             "categoryId": "20" // Gaming category
         },
@@ -398,6 +441,24 @@ mod tests {
         let (id, sec) = resolve_youtube_credentials("my_yt_id", "my_yt_secret");
         assert_eq!(id, "my_yt_id");
         assert_eq!(sec, "my_yt_secret");
+    }
+
+    #[test]
+    fn sanitize_youtube_title_truncates_over_100_chars() {
+        let long = "a".repeat(120);
+        let result = sanitize_youtube_title(&long).unwrap();
+        assert_eq!(result.chars().count(), 100);
+    }
+
+    #[test]
+    fn sanitize_youtube_title_strips_angle_brackets() {
+        let result = sanitize_youtube_title("Hello <World>").unwrap();
+        assert_eq!(result, "Hello World");
+    }
+
+    #[test]
+    fn sanitize_youtube_title_rejects_whitespace_only() {
+        assert!(sanitize_youtube_title("   \t\n   ").is_err());
     }
 
     #[test]

@@ -210,6 +210,23 @@ export function estimateCompressionDuration(
 }
 
 /**
+ * Sanitize a string for YouTube video titles (max 100 chars, no angle brackets).
+ */
+export function sanitizeYoutubeTitle(title: string): string {
+  let cleaned = title
+    .trim()
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .replace(/[<>]/g, " ");
+  cleaned = cleaned.replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  const chars = Array.from(cleaned);
+  if (chars.length > 100) {
+    cleaned = chars.slice(0, 100).join("").trimEnd();
+  }
+  return cleaned;
+}
+
+/**
  * Sanitize a string for safe use in filenames across Windows, macOS, and Linux.
  */
 export function sanitizeFilename(name: string): string {

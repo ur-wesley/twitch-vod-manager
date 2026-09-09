@@ -53,6 +53,7 @@ pub use twitch::{
     TwitchVod, VodQuality,
 };
 pub use youtube::{
-    refresh_youtube_token, resolve_youtube_credentials, start_google_oauth,
-    upload_video_to_youtube, validate_youtube_credentials, YouTubeCredentials, YouTubeVideoMetadata,
+    refresh_youtube_token, resolve_youtube_credentials, sanitize_youtube_description,
+    sanitize_youtube_title, start_google_oauth, upload_video_to_youtube,
+    validate_youtube_credentials, YouTubeCredentials, YouTubeVideoMetadata,
 };

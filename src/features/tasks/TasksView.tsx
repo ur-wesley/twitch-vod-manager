@@ -81,6 +81,29 @@ export function recordLocalTask(task: LocalTaskRecord) {
   saveLocalTasksHistory(list.slice(0, 50));
 }
 
+export function attachYoutubeVideoId(vodId: string, videoId: string) {
+  const list = getLocalTasksHistory();
+  const idx = list.findIndex((t) => t.vod_id === vodId);
+  if (idx < 0) return;
+  if (list[idx].youtube_video_id === videoId) return;
+  list[idx] = { ...list[idx], youtube_video_id: videoId };
+  saveLocalTasksHistory(list);
+}
+
+function YouTubeTaskLink(props: { videoId: string }) {
+  return (
+    <a
+      href={`https://youtu.be/${props.videoId}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      class="text-red-400 flex items-center gap-1 font-mono hover:underline"
+    >
+      <span class="i-mdi-youtube size-3 shrink-0" />
+      YouTube
+    </a>
+  );
+}
+
 export function isTaskActive(status: string): boolean {
   return status !== "completed" && status !== "failed" && status !== "cancelled";
 }
@@ -675,6 +698,9 @@ export const TasksView: Component<TasksViewProps> = (props) => {
                           Drive OK
                         </span>
                       </Show>
+                      <Show when={task.youtube_video_id}>
+                        <YouTubeTaskLink videoId={task.youtube_video_id!} />
+                      </Show>
                     </div>
 
                     {/* Actions for Local Task */}
@@ -780,9 +806,7 @@ export const TasksView: Component<TasksViewProps> = (props) => {
                           </span>
                         </Show>
                         <Show when={job.youtube_video_id}>
-                          <span class="text-red-400 flex items-center gap-1 font-mono">
-                            <span class="i-mdi-youtube size-3" /> YouTube: {job.youtube_video_id}
-                          </span>
+                          <YouTubeTaskLink videoId={job.youtube_video_id!} />
                         </Show>
                       </div>
                     </div>

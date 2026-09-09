@@ -11,7 +11,7 @@ import {
 } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
 import { Progress } from "~/components/ui/progress";
-import { formatBytes, formatSpeed } from "~/lib/utils";
+import { formatBytes, formatSpeed, sanitizeYoutubeTitle } from "~/lib/utils";
 import {
   loginYouTube,
   onDriveUploadProgress,
@@ -58,7 +58,7 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
 
   createEffect(() => {
     if (props.isOpen && props.source) {
-      setTitle(`[VOD] ${props.source.title}`);
+      setTitle(sanitizeYoutubeTitle(`[VOD] ${props.source.title}`));
       setDescription(`Stream broadcast archive.\nOriginally streamed on Twitch.\n\n#Twitch #VOD`);
       setUploading(false);
       setConnecting(false);
@@ -131,7 +131,7 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
       .map((t) => t.trim())
       .filter(Boolean);
     return {
-      title: title(),
+      title: sanitizeYoutubeTitle(title()),
       description: description(),
       privacy_status: privacy(),
       tags: tagList,
@@ -282,12 +282,18 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
           >
             <div class="space-y-3 py-1">
               <div class="space-y-1">
-                <label class="text-xs font-semibold text-foreground">Video Title</label>
+                <div class="flex items-center justify-between">
+                  <label class="text-xs font-semibold text-foreground">Video Title</label>
+                  <span class="text-[10px] text-muted-foreground">
+                    {Array.from(title()).length}/100
+                  </span>
+                </div>
                 <Input
                   value={title()}
                   onInput={(e) => setTitle(e.currentTarget.value)}
                   disabled={uploading()}
                   placeholder="Video Title"
+                  maxLength={100}
                 />
               </div>
 
@@ -405,7 +411,7 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
               variant="default"
               size="sm"
               onClick={handleUpload}
-              disabled={uploading() || !title() || !props.source}
+              disabled={uploading() || !sanitizeYoutubeTitle(title()) || !props.source}
               class="gap-1.5 bg-red-600 hover:bg-red-700 text-white"
             >
               <span

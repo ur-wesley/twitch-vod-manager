@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatSecondsToTimestamp, parseTimestampToSeconds } from "./utils";
+import { formatSecondsToTimestamp, parseTimestampToSeconds, sanitizeYoutubeTitle } from "./utils";
 
 describe("utils timestamp helpers", () => {
   describe("parseTimestampToSeconds", () => {
@@ -53,6 +53,21 @@ describe("utils timestamp helpers", () => {
 
     it("respects forceHours", () => {
       expect(formatSecondsToTimestamp(930, true)).toBe("00:15:30");
+    });
+  });
+
+  describe("sanitizeYoutubeTitle", () => {
+    it("truncates titles over 100 characters", () => {
+      const long = "a".repeat(120);
+      expect(Array.from(sanitizeYoutubeTitle(long))).toHaveLength(100);
+    });
+
+    it("strips angle brackets", () => {
+      expect(sanitizeYoutubeTitle("Hello <World>")).toBe("Hello World");
+    });
+
+    it("returns empty string for whitespace-only input", () => {
+      expect(sanitizeYoutubeTitle("   \t\n   ")).toBe("");
     });
   });
 });
