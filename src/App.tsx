@@ -12,6 +12,7 @@ import { UserProfile } from "~/features/auth/UserProfile";
 import { CloudLibrary } from "~/features/cloud_library/CloudLibrary";
 import { YouTubePublishModal } from "~/features/cloud_library/YouTubePublishModal";
 import { PipelineMonitor, type PipelineStage } from "~/features/pipeline/PipelineMonitor";
+import { acceptPipelineProgress, showPipelineStatus } from "~/features/pipeline/pipelineStatus";
 import { SettingsView } from "~/features/settings/SettingsView";
 import { ArchiveModal, type ArchiveModalConfirmConfig } from "~/features/vods/ArchiveModal";
 import { DeleteVodModal } from "~/features/vods/DeleteVodModal";
@@ -114,6 +115,21 @@ export const App: Component = () => {
   const [s3Progress, setS3Progress] = createSignal<S3TransferProgress | null>(null);
   const [driveProgress, setDriveProgress] = createSignal<DriveTransferProgress | null>(null);
 
+  const PIPELINE_COMPLETED_DISPLAY_MS = 1000;
+
+  const resetPipelineToIdle = () => {
+    setPipelineStage("idle");
+    setActiveVodId(null);
+    setDownloadProgress(null);
+    setCompressionProgress(null);
+    setS3Progress(null);
+    setDriveProgress(null);
+  };
+
+  const schedulePipelineIdleReset = () => {
+    setTimeout(resetPipelineToIdle, PIPELINE_COMPLETED_DISPLAY_MS);
+  };
+
   const [appVersion, setAppVersion] = createSignal("v0.1.0");
   const [updateInfo, setUpdateInfo] = createSignal<UpdateInfoDto | null>(null);
   const [updateOpen, setUpdateOpen] = createSignal(false);
@@ -169,12 +185,14 @@ export const App: Component = () => {
     let unlistenDrive: (() => void) | undefined;
 
     onDownloadProgress((p) => {
+      if (!acceptPipelineProgress(activeVodId(), p.vod_id)) return;
       setPipelineStage("downloading");
       setDownloadProgress(p);
     }).then((un) => (unlistenDl = un));
 
     let recordedTelemetryForVod = "";
     onCompressionProgress((p) => {
+      if (!acceptPipelineProgress(activeVodId(), p.vod_id)) return;
       setPipelineStage("compressing");
       setCompressionProgress(p);
       if (p.percent >= 90 && p.fps > 0 && recordedTelemetryForVod !== p.vod_id) {
@@ -195,25 +213,31 @@ export const App: Component = () => {
     }).then((un) => (unlistenCp = un));
 
     onS3UploadProgress((p) => {
+      if (!acceptPipelineProgress(activeVodId(), p.vod_id)) return;
       setPipelineStage("uploading");
       setS3Progress(p);
       if (p.percent >= 100) {
         setTimeout(() => {
+          if (!acceptPipelineProgress(activeVodId(), p.vod_id)) return;
           setPipelineStage("completed");
           refreshS3Objects();
-        }, 1000);
+          schedulePipelineIdleReset();
+        }, PIPELINE_COMPLETED_DISPLAY_MS);
       }
     }).then((un) => (unlistenS3 = un));
 
     onDriveUploadProgress((p) => {
+      if (!acceptPipelineProgress(activeVodId(), p.vod_id)) return;
       setPipelineStage("uploading");
       setDriveProgress(p);
       if (p.percent >= 100) {
         setTimeout(() => {
+          if (!acceptPipelineProgress(activeVodId(), p.vod_id)) return;
           setPipelineStage("completed");
           if (p.provider === "gdrive") refreshGdriveFiles();
           if (p.provider === "webdav") refreshWebdavFiles();
-        }, 1000);
+          schedulePipelineIdleReset();
+        }, PIPELINE_COMPLETED_DISPLAY_MS);
       }
     }).then((un) => (unlistenDrive = un));
 
@@ -552,10 +576,10 @@ export const App: Component = () => {
           completed_at: new Date().toISOString(),
         });
         toast.success(`Pipeline finished for VOD #${config.vodId}`);
+        schedulePipelineIdleReset();
       },
       (err) => {
-        setPipelineStage("idle");
-        setActiveVodId(null);
+        resetPipelineToIdle();
         recordLocalTask({
           id: localTaskId,
           vod_id: config.vodId,
@@ -586,8 +610,7 @@ export const App: Component = () => {
             completed_at: new Date().toISOString(),
           });
         }
-        setPipelineStage("idle");
-        setActiveVodId(null);
+        resetPipelineToIdle();
         toast.info("Active task cancelled");
       },
       (err) => toast.error(`Failed to cancel: ${err.message}`),
@@ -823,7 +846,7 @@ export const App: Component = () => {
                     <span>Tasks</span>
                   </Show>
                 </div>
-                <Show when={pipelineStage() !== "idle"}>
+                <Show when={showPipelineStatus(pipelineStage(), activeVodId())}>
                   <span
                     class={`rounded-full bg-primary animate-pulse ${
                       sidebarCollapsed() ? "absolute top-1.5 right-1.5 size-2" : "size-2"
@@ -901,7 +924,7 @@ export const App: Component = () => {
               </button>
             </nav>
 
-            <Show when={!sidebarCollapsed() && pipelineStage() !== "idle"}>
+            <Show when={!sidebarCollapsed() && showPipelineStatus(pipelineStage(), activeVodId())}>
               <div
                 class="rounded-xl border border-primary/30 bg-primary/10 p-3 space-y-1.5 animate-pulse cursor-pointer hover:bg-primary/20 transition-colors"
                 onClick={() => setActiveTab("tasks")}
@@ -915,11 +938,11 @@ export const App: Component = () => {
                   <span class="capitalize">{pipelineStage()}</span>
                 </div>
                 <p class="text-[10px] text-muted-foreground truncate">
-                  VOD ID: #{activeVodId() || "unknown"}
+                  VOD ID: #{activeVodId()}
                 </p>
               </div>
             </Show>
-            <Show when={sidebarCollapsed() && pipelineStage() !== "idle"}>
+            <Show when={sidebarCollapsed() && showPipelineStatus(pipelineStage(), activeVodId())}>
               <div
                 class="mx-auto size-2 rounded-full bg-primary animate-pulse cursor-pointer"
                 title={`Processing: ${pipelineStage()} (Click to open Tasks)`}
@@ -1013,7 +1036,7 @@ export const App: Component = () => {
           <Show when={activeTab() === "vods"}>
             <div class="flex-1 overflow-y-auto p-6 space-y-6">
               {/* Pipeline Monitor if running */}
-              <Show when={pipelineStage() !== "idle"}>
+              <Show when={showPipelineStatus(pipelineStage(), activeVodId())}>
                 <PipelineMonitor
                   stage={pipelineStage()}
                   activeVodId={activeVodId()}
