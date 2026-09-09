@@ -145,12 +145,56 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
   const [startInput, setStartInput] = createSignal("");
   const [stopInput, setStopInput] = createSignal("");
   const [playerCurrentTime, setPlayerCurrentTime] = createSignal(0);
-  const [playerTargetTimeSecs, setPlayerTargetTimeSecs] = createSignal<number | null>(null);
-  const [useIframeFallback, setUseIframeFallback] = createSignal(false);
+  const [embedFailed, setEmbedFailed] = createSignal(false);
 
   let embedContainerRef: HTMLDivElement | undefined;
   let twitchPlayerInstance: any = null;
-  let playerPollInterval: any = null;
+  let playerPollInterval: ReturnType<typeof setInterval> | null = null;
+  let embedReadyTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  const twitchParents = () =>
+    [
+      ...new Set([
+        window.location.hostname || "localhost",
+        "localhost",
+        "127.0.0.1",
+        "tauri.localhost",
+      ]),
+    ];
+
+  const previewThumbnailSrc = () =>
+    props.vod?.thumbnail_url
+      ?.replace("%{width}", "640")
+      .replace("%{height}", "360") ?? "";
+
+  const clearEmbedReadyTimeout = () => {
+    if (embedReadyTimeout) {
+      clearTimeout(embedReadyTimeout);
+      embedReadyTimeout = null;
+    }
+  };
+
+  const destroyTwitchPlayer = () => {
+    clearEmbedReadyTimeout();
+    if (playerPollInterval) {
+      clearInterval(playerPollInterval);
+      playerPollInterval = null;
+    }
+    if (twitchPlayerInstance) {
+      try {
+        twitchPlayerInstance.destroy?.();
+      } catch {}
+      twitchPlayerInstance = null;
+    }
+    if (embedContainerRef) {
+      embedContainerRef.innerHTML = "";
+    }
+  };
+
+  const markEmbedFailed = () => {
+    destroyTwitchPlayer();
+    setEmbedFailed(true);
+  };
 
   const rawVodDurationSecs = () =>
     props.vod?.duration ? parseTwitchDuration(props.vod.duration) : 0;
@@ -241,43 +285,54 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
   const initTwitchPlayer = () => {
     if (!props.isOpen || !props.vod?.id || !embedContainerRef) return;
 
+    setEmbedFailed(false);
+    destroyTwitchPlayer();
+
     const win = window as any;
     const createPlayer = () => {
       if (!win.Twitch?.Player || !embedContainerRef) {
-        setUseIframeFallback(true);
+        markEmbedFailed();
         return;
       }
       try {
-        if (twitchPlayerInstance) {
-          try {
-            twitchPlayerInstance.destroy?.();
-          } catch {}
-          twitchPlayerInstance = null;
-        }
         embedContainerRef.innerHTML = "";
         const player = new win.Twitch.Player(embedContainerRef, {
           video: props.vod!.id,
-          parent: [window.location.hostname || "localhost", "localhost", "tauri.localhost"],
+          parent: twitchParents(),
           width: "100%",
           height: "100%",
           autoplay: false,
         });
         twitchPlayerInstance = player;
-        setUseIframeFallback(false);
 
-        if (playerPollInterval) clearInterval(playerPollInterval);
-        playerPollInterval = setInterval(() => {
-          if (twitchPlayerInstance && typeof twitchPlayerInstance.getCurrentTime === "function") {
-            try {
-              const t = twitchPlayerInstance.getCurrentTime();
-              if (typeof t === "number" && !isNaN(t)) {
-                setPlayerCurrentTime(Math.floor(t));
-              }
-            } catch {}
+        const readyEvent = win.Twitch?.Player?.READY ?? "ready";
+        let embedReady = false;
+        clearEmbedReadyTimeout();
+        embedReadyTimeout = setTimeout(() => {
+          if (!embedReady) {
+            markEmbedFailed();
           }
-        }, 500);
+        }, 2000);
+
+        player.addEventListener?.(readyEvent, () => {
+          embedReady = true;
+          clearEmbedReadyTimeout();
+          setEmbedFailed(false);
+
+          if (playerPollInterval) clearInterval(playerPollInterval);
+          playerPollInterval = setInterval(() => {
+            if (twitchPlayerInstance && typeof twitchPlayerInstance.getCurrentTime === "function") {
+              try {
+                const t = twitchPlayerInstance.getCurrentTime();
+                if (typeof t === "number" && !isNaN(t)) {
+                  setPlayerCurrentTime(Math.floor(t));
+                }
+              } catch {}
+            }
+          }, 500);
+        });
       } catch {
-        setUseIframeFallback(true);
+        markEmbedFailed();
       }
     };
 
@@ -290,17 +345,17 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
         script.id = "twitch-embed-sdk";
         script.src = "https://player.twitch.tv/js/embed/v1.js";
         script.async = true;
-        script.onload = () => createPlayer();
-        script.onerror = () => setUseIframeFallback(true);
+        script.onload = () => {
+          script.dataset.loaded = "true";
+          createPlayer();
+        };
+        script.onerror = () => markEmbedFailed();
         document.head.appendChild(script);
+      } else if ((existingScript as HTMLScriptElement).dataset.loaded === "true") {
+        createPlayer();
       } else {
-        existingScript.addEventListener("load", () => createPlayer());
+        existingScript.addEventListener("load", () => createPlayer(), { once: true });
       }
-      setTimeout(() => {
-        if (!twitchPlayerInstance) {
-          setUseIframeFallback(true);
-        }
-      }, 1500);
     }
   };
 
@@ -314,7 +369,7 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
       setStartInput("");
       setStopInput("");
       setPlayerCurrentTime(0);
-      setPlayerTargetTimeSecs(null);
+      setEmbedFailed(false);
 
       // Default to worker if configured and preferred
       if (props.hasWorkerConfigured) {
@@ -349,41 +404,25 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
 
       setTimeout(() => initTwitchPlayer(), 60);
     } else {
-      if (playerPollInterval) {
-        clearInterval(playerPollInterval);
-        playerPollInterval = null;
-      }
-      if (twitchPlayerInstance) {
-        try {
-          twitchPlayerInstance.destroy?.();
-        } catch {}
-        twitchPlayerInstance = null;
-      }
+      destroyTwitchPlayer();
     }
   });
 
   onCleanup(() => {
-    if (playerPollInterval) clearInterval(playerPollInterval);
-    if (twitchPlayerInstance) {
-      try {
-        twitchPlayerInstance.destroy?.();
-      } catch {}
-      twitchPlayerInstance = null;
-    }
+    destroyTwitchPlayer();
   });
 
   const seekPlayer = (targetSecs: number) => {
     const maxDur = rawVodDurationSecs() || 86400;
     const clamped = Math.max(0, Math.min(targetSecs, maxDur));
     setPlayerCurrentTime(Math.floor(clamped));
+    if (embedFailed()) return;
     if (twitchPlayerInstance && typeof twitchPlayerInstance.seek === "function") {
       try {
         twitchPlayerInstance.seek(clamped);
         twitchPlayerInstance.play();
-        return;
       } catch {}
     }
-    setPlayerTargetTimeSecs(clamped);
   };
 
   const jumpDelta = (deltaSecs: number) => {
@@ -520,19 +559,33 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
             <Show when={showPreview()}>
               <div class="space-y-2">
                 <div class="relative aspect-video w-full rounded-lg overflow-hidden bg-black border border-border/40 shadow-inner">
+                  <Show when={embedFailed()}>
+                    <img
+                      src={previewThumbnailSrc()}
+                      alt={props.vod?.title ?? "VOD preview"}
+                      class="absolute inset-0 size-full object-cover"
+                    />
+                    <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/50">
+                      <span class="text-xs text-muted-foreground text-center px-4">
+                        Preview unavailable in app
+                      </span>
+                      <a
+                        href={props.vod?.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors"
+                      >
+                        <span class="i-mdi-open-in-new size-3.5" aria-hidden="true" />
+                        Open on Twitch
+                      </a>
+                    </div>
+                  </Show>
                   <div
                     ref={(el) => (embedContainerRef = el)}
                     id="twitch-embed-preview"
-                    class="w-full h-full"
+                    class="absolute inset-0 size-full [&_iframe]:absolute [&_iframe]:inset-0 [&_iframe]:size-full [&_iframe]:border-0"
+                    classList={{ hidden: embedFailed() }}
                   />
-                  <Show when={useIframeFallback()}>
-                    <iframe
-                      src={`https://player.twitch.tv/?video=${props.vod?.id}&parent=${window.location.hostname || "localhost"}&parent=localhost&parent=tauri.localhost&autoplay=false${playerTargetTimeSecs() !== null ? `&time=${playerTargetTimeSecs()}s` : ""}`}
-                      class="w-full h-full border-0 absolute inset-0"
-                      allowfullscreen
-                      scrolling="no"
-                    />
-                  </Show>
                 </div>
 
                 {/* Player Scrub & Quick Markers */}
