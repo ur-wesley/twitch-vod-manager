@@ -573,16 +573,6 @@ async fn create_job_handler(
             }
         };
 
-        if !payload.upload_to_youtube.unwrap_or(false) {
-            return Ok((
-                StatusCode::BAD_REQUEST,
-                Json(CreateJobResponse {
-                    job_id: String::new(),
-                    message: "upload_to_youtube must be true for publish-from-storage jobs".to_string(),
-                }),
-            ));
-        }
-
         let youtube_token = match payload
             .youtube_token
             .as_deref()

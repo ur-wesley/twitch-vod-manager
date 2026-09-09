@@ -1364,6 +1364,8 @@ pub async fn worker_dispatch_job(
         None
     };
 
+    let worker_upload_to_youtube = source.is_some() || upload_to_youtube.unwrap_or(false);
+
     let payload = serde_json::json!({
         "vod_id": vod_id,
         "title": title,
@@ -1382,7 +1384,7 @@ pub async fn worker_dispatch_job(
         "gdrive_config": gdrive_config,
         "upload_to_webdav": upload_to_webdav,
         "webdav_config": webdav_config,
-        "upload_to_youtube": upload_to_youtube,
+        "upload_to_youtube": worker_upload_to_youtube,
         "youtube_token": yt_token,
         "youtube_metadata": youtube_metadata,
         "delete_from_twitch_after": delete_from_twitch_after,
