@@ -498,7 +498,7 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
 
   return (
     <Dialog open={props.isOpen} onOpenChange={(open) => !open && props.onClose()}>
-      <DialogContent class="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
+      <DialogContent class="sm:max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle class="flex items-center gap-2">
             <span class="i-mdi-cloud-upload text-primary size-5" aria-hidden="true" />
@@ -509,7 +509,7 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
           </DialogDescription>
         </DialogHeader>
 
-        <div class="space-y-4 py-2">
+        <div class="min-h-0 flex-1 overflow-y-auto space-y-4 py-2">
           {/* VOD Preview & Trimming (Clip / Segment) Section */}
           <div class="rounded-xl border border-border/70 bg-card/50 p-3 space-y-3">
             <div class="flex items-center justify-between">
@@ -558,7 +558,7 @@ export const ArchiveModal: Component<ArchiveModalProps> = (props) => {
             {/* Video Player Box */}
             <Show when={showPreview()}>
               <div class="space-y-2">
-                <div class="relative aspect-video w-full rounded-lg overflow-hidden bg-black border border-border/40 shadow-inner">
+                <div class="relative aspect-video w-full max-h-[min(40vh,22rem)] rounded-lg overflow-hidden bg-black border border-border/40 shadow-inner">
                   <Show when={embedFailed()}>
                     <img
                       src={previewThumbnailSrc()}
