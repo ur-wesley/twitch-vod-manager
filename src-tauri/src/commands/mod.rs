@@ -10,9 +10,7 @@ use crate::modules::twitch::{
     get_user_by_id, get_user_by_login, get_user_info, get_vod_qualities, get_vods,
     start_oauth_flow, TwitchUser, TwitchVod, VodQuality,
 };
-use crate::modules::youtube::{
-    start_google_oauth, upload_video_to_youtube,
-};
+use crate::modules::youtube::start_google_oauth;
 use vod_core::YouTubeVideoMetadata;
 use crate::state::AppState;
 use std::path::PathBuf;
@@ -374,6 +372,19 @@ impl vod_core::reporter::ProgressReporter for TauriProgressReporter {
     }
 }
 
+fn youtube_credentials_from_settings(settings: &AppSettings) -> vod_core::YouTubeCredentials {
+    let (client_id, client_secret) = vod_core::resolve_youtube_credentials(
+        settings.youtube_client_id.as_deref().unwrap_or_default(),
+        settings.youtube_client_secret.as_deref().unwrap_or_default(),
+    );
+    vod_core::YouTubeCredentials {
+        client_id,
+        client_secret,
+        access_token: settings.youtube_access_token.clone().unwrap_or_default(),
+        refresh_token: settings.youtube_refresh_token.clone(),
+    }
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn start_pipeline(
@@ -401,7 +412,7 @@ pub async fn start_pipeline(
     *state.active_vod_id.write().await = Some(vod_id.clone());
 
     let (s3_ep, s3_reg, s3_bkt, s3_ak, s3_sk, custom_temp, custom_out, twitch_cid, twitch_token, yt_token,
-         gdrive_cid, gdrive_cs, gdrive_tok, gdrive_rtok, gdrive_fid,
+         yt_rtok, yt_cid, yt_cs, gdrive_cid, gdrive_cs, gdrive_tok, gdrive_rtok, gdrive_fid,
          webdav_ep, webdav_u, webdav_p, webdav_f) = {
         let s = state.settings.read().await;
         (
@@ -415,6 +426,9 @@ pub async fn start_pipeline(
             s.twitch_client_id.clone(),
             s.twitch_access_token.clone(),
             s.youtube_access_token.clone(),
+            s.youtube_refresh_token.clone(),
+            s.youtube_client_id.clone(),
+            s.youtube_client_secret.clone(),
             s.gdrive_client_id.clone().unwrap_or_default(),
             s.gdrive_client_secret.clone().unwrap_or_default(),
             s.gdrive_access_token.clone().unwrap_or_default(),
@@ -491,6 +505,9 @@ pub async fn start_pipeline(
         webdav_config,
         upload_to_youtube: upload_to_youtube.unwrap_or(false),
         youtube_token: yt_token,
+        youtube_refresh_token: yt_rtok,
+        youtube_client_id: yt_cid,
+        youtube_client_secret: yt_cs,
         youtube_metadata,
         delete_from_twitch_after: delete_from_twitch_after.unwrap_or(false),
         twitch_client_id: Some(twitch_cid),
@@ -961,29 +978,18 @@ pub async fn publish_to_youtube(
     local_video_path: String,
     metadata: YouTubeVideoMetadata,
 ) -> Result<String, StableError> {
-    let token = {
-        state
-            .settings
-            .read()
-            .await
-            .youtube_access_token
-            .clone()
-            .unwrap_or_default()
-    };
-    if token.is_empty() {
-        return Err(StableError::new(
-            "AUTH_ERROR",
-            "Please connect your YouTube account in Settings first",
-        ));
-    }
+    let settings = state.settings.read().await.clone();
+    let youtube_credentials = youtube_credentials_from_settings(&settings);
+    vod_core::validate_youtube_credentials(&youtube_credentials)?;
 
     let path = PathBuf::from(local_video_path);
     state.is_cancelled.store(false, Ordering::Relaxed);
+    let reporter = std::sync::Arc::new(TauriProgressReporter { app: app.clone() });
 
-    upload_video_to_youtube(
-        &app,
+    vod_core::upload_video_to_youtube(
+        reporter,
         &vod_id,
-        &token,
+        &youtube_credentials,
         &path,
         &metadata,
         state.is_cancelled.clone(),
@@ -1002,13 +1008,8 @@ pub async fn publish_cloud_to_youtube(
     metadata: YouTubeVideoMetadata,
 ) -> Result<String, StableError> {
     let settings = state.settings.read().await.clone();
-    let token = settings.youtube_access_token.clone().unwrap_or_default();
-    if token.is_empty() {
-        return Err(StableError::new(
-            "AUTH_ERROR",
-            "Please connect your YouTube account in Settings first",
-        ));
-    }
+    let youtube_credentials = youtube_credentials_from_settings(&settings);
+    vod_core::validate_youtube_credentials(&youtube_credentials)?;
 
     let storage_source = match source.as_str() {
         "gdrive" => {
@@ -1090,7 +1091,7 @@ pub async fn publish_cloud_to_youtube(
         &vod_id,
         &storage_source,
         &temp_path,
-        &token,
+        &youtube_credentials,
         &metadata,
         state.is_cancelled.clone(),
     )
@@ -1185,6 +1186,32 @@ pub async fn worker_sync_settings(
                 fresh_gd_tok = Some(new_tok.clone());
                 let mut updated_s = s.clone();
                 updated_s.gdrive_access_token = Some(new_tok);
+                if let Ok(path) = get_config_path(&app) {
+                    let _ = save_settings_impl(&path, &updated_s);
+                }
+                *state.settings.write().await = updated_s;
+            }
+        }
+    }
+
+    let (resolved_yt_cid, resolved_yt_cs) = vod_core::resolve_youtube_credentials(
+        s.youtube_client_id.as_deref().unwrap_or_default(),
+        s.youtube_client_secret.as_deref().unwrap_or_default(),
+    );
+    if let Some(ref rtok) = s.youtube_refresh_token {
+        if !rtok.trim().is_empty()
+            && resolved_yt_cid != vod_core::youtube::DEFAULT_YOUTUBE_CLIENT_ID
+            && !resolved_yt_cid.trim().is_empty()
+        {
+            if let Ok(new_tok) = vod_core::refresh_youtube_token(
+                &resolved_yt_cid,
+                &resolved_yt_cs,
+                rtok,
+            )
+            .await
+            {
+                let mut updated_s = state.settings.read().await.clone();
+                updated_s.youtube_access_token = Some(new_tok);
                 if let Ok(path) = get_config_path(&app) {
                     let _ = save_settings_impl(&path, &updated_s);
                 }
@@ -1288,7 +1315,7 @@ pub async fn worker_dispatch_job(
     source: Option<String>,
     source_id: Option<String>,
 ) -> Result<serde_json::Value, StableError> {
-    let (s3_ep, s3_reg, s3_bkt, s3_ak, s3_sk, twitch_cid, twitch_token, yt_token, gd_cid, gd_cs, gd_tok, gd_rtok, gd_fid, wd_ep, wd_u, wd_p, wd_f) = {
+    let (s3_ep, s3_reg, s3_bkt, s3_ak, s3_sk, twitch_cid, twitch_token, yt_token, yt_rtok, yt_cid, yt_cs, gd_cid, gd_cs, gd_tok, gd_rtok, gd_fid, wd_ep, wd_u, wd_p, wd_f) = {
         let s = state.settings.read().await;
         (
             s.s3_endpoint.clone(),
@@ -1299,6 +1326,9 @@ pub async fn worker_dispatch_job(
             s.twitch_client_id.clone(),
             s.twitch_access_token.clone(),
             s.youtube_access_token.clone(),
+            s.youtube_refresh_token.clone(),
+            s.youtube_client_id.clone(),
+            s.youtube_client_secret.clone(),
             s.gdrive_client_id.clone(),
             s.gdrive_client_secret.clone(),
             s.gdrive_access_token.clone(),
@@ -1310,6 +1340,27 @@ pub async fn worker_dispatch_job(
             s.webdav_folder.clone(),
         )
     };
+
+    let (resolved_yt_cid, resolved_yt_cs) = vod_core::resolve_youtube_credentials(
+        yt_cid.as_deref().unwrap_or_default(),
+        yt_cs.as_deref().unwrap_or_default(),
+    );
+    let mut fresh_yt_tok = yt_token.clone();
+    if let Some(ref rtok) = yt_rtok {
+        if !rtok.trim().is_empty()
+            && resolved_yt_cid != vod_core::youtube::DEFAULT_YOUTUBE_CLIENT_ID
+            && !resolved_yt_cid.trim().is_empty()
+        {
+            if let Ok(new_tok) =
+                vod_core::refresh_youtube_token(&resolved_yt_cid, &resolved_yt_cs, rtok).await
+            {
+                fresh_yt_tok = Some(new_tok.clone());
+                let mut updated_s = state.settings.read().await.clone();
+                updated_s.youtube_access_token = Some(new_tok);
+                *state.settings.write().await = updated_s;
+            }
+        }
+    }
 
     let (twitch_cid, _) =
         vod_core::twitch::resolve_twitch_credentials(&twitch_cid, "");
@@ -1385,7 +1436,10 @@ pub async fn worker_dispatch_job(
         "upload_to_webdav": upload_to_webdav,
         "webdav_config": webdav_config,
         "upload_to_youtube": worker_upload_to_youtube,
-        "youtube_token": yt_token,
+        "youtube_token": fresh_yt_tok,
+        "youtube_refresh_token": yt_rtok,
+        "youtube_client_id": resolved_yt_cid,
+        "youtube_client_secret": resolved_yt_cs,
         "youtube_metadata": youtube_metadata,
         "delete_from_twitch_after": delete_from_twitch_after,
         "twitch_client_id": Some(twitch_cid),

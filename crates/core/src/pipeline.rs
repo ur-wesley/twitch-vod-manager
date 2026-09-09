@@ -3,7 +3,10 @@ use crate::reporter::DynReporter;
 use crate::storage_gdrive::{upload_vod_to_gdrive, GDriveCredentials};
 use crate::storage_s3::{upload_vod_to_s3, S3Credentials};
 use crate::storage_webdav::{upload_vod_to_webdav, WebDavCredentials};
-use crate::youtube::{upload_video_to_youtube, YouTubeVideoMetadata};
+use crate::youtube::{
+    resolve_youtube_credentials, upload_video_to_youtube, validate_youtube_credentials,
+    YouTubeCredentials, YouTubeVideoMetadata,
+};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -41,6 +44,12 @@ pub struct PipelineConfig {
 
     pub upload_to_youtube: bool,
     pub youtube_token: Option<String>,
+    #[serde(default)]
+    pub youtube_refresh_token: Option<String>,
+    #[serde(default)]
+    pub youtube_client_id: Option<String>,
+    #[serde(default)]
+    pub youtube_client_secret: Option<String>,
     pub youtube_metadata: Option<YouTubeVideoMetadata>,
 
     // Twitch VOD management
@@ -287,10 +296,18 @@ pub async fn run_archive_pipeline(
 
     // 7. Upload to YouTube if requested
     if config.upload_to_youtube {
-        if let (Some(ref token), Some(ref meta)) =
-            (&config.youtube_token, &config.youtube_metadata)
-        {
-            if !token.is_empty() {
+        if let Some(ref meta) = config.youtube_metadata {
+            let (client_id, client_secret) = resolve_youtube_credentials(
+                config.youtube_client_id.as_deref().unwrap_or_default(),
+                config.youtube_client_secret.as_deref().unwrap_or_default(),
+            );
+            let youtube_credentials = YouTubeCredentials {
+                client_id,
+                client_secret,
+                access_token: config.youtube_token.clone().unwrap_or_default(),
+                refresh_token: config.youtube_refresh_token.clone(),
+            };
+            if validate_youtube_credentials(&youtube_credentials).is_ok() {
                 reporter.report_stage(
                     vod_id,
                     "uploading_youtube",
@@ -304,7 +321,7 @@ pub async fn run_archive_pipeline(
                 let yt_id = upload_video_to_youtube(
                     reporter.clone(),
                     vod_id,
-                    token,
+                    &youtube_credentials,
                     &final_local_file,
                     meta,
                     is_cancelled.clone(),

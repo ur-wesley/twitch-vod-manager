@@ -24,7 +24,7 @@ use vod_core::storage_gdrive::GDriveCredentials;
 use vod_core::storage_s3::S3Credentials;
 use vod_core::storage_webdav::WebDavCredentials;
 use vod_core::twitch::resolve_twitch_credentials;
-use vod_core::youtube::YouTubeVideoMetadata;
+use vod_core::youtube::{resolve_youtube_credentials, YouTubeCredentials, YouTubeVideoMetadata};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkerStatusResponse {
@@ -129,6 +129,12 @@ pub struct CreateJobRequest {
     pub webdav_config: Option<WebDavCredentials>,
     pub upload_to_youtube: Option<bool>,
     pub youtube_token: Option<String>,
+    #[serde(default)]
+    pub youtube_refresh_token: Option<String>,
+    #[serde(default)]
+    pub youtube_client_id: Option<String>,
+    #[serde(default)]
+    pub youtube_client_secret: Option<String>,
     pub youtube_metadata: Option<YouTubeVideoMetadata>,
     pub delete_from_twitch_after: Option<bool>,
     pub twitch_client_id: Option<String>,
@@ -573,21 +579,35 @@ async fn create_job_handler(
             }
         };
 
-        let youtube_token = match payload
+        let has_youtube_access = payload
             .youtube_token
             .as_deref()
-            .filter(|t| !t.is_empty())
-        {
-            Some(token) => token,
-            None => {
-                return Ok((
-                    StatusCode::BAD_REQUEST,
-                    Json(CreateJobResponse {
-                        job_id: String::new(),
-                        message: "youtube_token is required for publish-from-storage jobs".to_string(),
-                    }),
-                ));
-            }
+            .map(|t| !t.is_empty())
+            .unwrap_or(false);
+        let has_youtube_refresh = payload
+            .youtube_refresh_token
+            .as_deref()
+            .map(|t| !t.is_empty())
+            .unwrap_or(false);
+        if !has_youtube_access && !has_youtube_refresh {
+            return Ok((
+                StatusCode::BAD_REQUEST,
+                Json(CreateJobResponse {
+                    job_id: String::new(),
+                    message: "youtube_token or youtube_refresh_token is required for publish-from-storage jobs".to_string(),
+                }),
+            ));
+        }
+
+        let (youtube_client_id, youtube_client_secret) = resolve_youtube_credentials(
+            payload.youtube_client_id.as_deref().unwrap_or_default(),
+            payload.youtube_client_secret.as_deref().unwrap_or_default(),
+        );
+        let youtube_credentials = YouTubeCredentials {
+            client_id: youtube_client_id,
+            client_secret: youtube_client_secret,
+            access_token: payload.youtube_token.clone().unwrap_or_default(),
+            refresh_token: payload.youtube_refresh_token.clone(),
         };
 
         let youtube_metadata = match payload.youtube_metadata.clone() {
@@ -665,7 +685,7 @@ async fn create_job_handler(
             job_id.clone(),
             payload.vod_id.clone(),
             storage_source,
-            youtube_token.to_string(),
+            youtube_credentials,
             youtube_metadata,
         );
 
@@ -720,6 +740,9 @@ async fn create_job_handler(
         webdav_config,
         upload_to_youtube: payload.upload_to_youtube.unwrap_or(false),
         youtube_token: payload.youtube_token,
+        youtube_refresh_token: payload.youtube_refresh_token,
+        youtube_client_id: payload.youtube_client_id,
+        youtube_client_secret: payload.youtube_client_secret,
         youtube_metadata: payload.youtube_metadata,
         delete_from_twitch_after: payload.delete_from_twitch_after.unwrap_or(false),
         twitch_client_id: payload.twitch_client_id,

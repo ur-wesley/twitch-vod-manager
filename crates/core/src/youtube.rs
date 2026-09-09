@@ -17,10 +17,23 @@ pub struct YouTubeVideoMetadata {
     pub tags: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YouTubeCredentials {
+    pub client_id: String,
+    pub client_secret: String,
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct GoogleTokenResponse {
     access_token: String,
     refresh_token: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RefreshTokenResponse {
+    access_token: String,
 }
 
 // Default desktop client credentials for YouTube integration
@@ -180,14 +193,75 @@ async fn exchange_google_code(
     Ok((token_data.access_token, token_data.refresh_token))
 }
 
+pub async fn refresh_youtube_token(
+    client_id: &str,
+    client_secret: &str,
+    refresh_token: &str,
+) -> Result<String, AppError> {
+    let (cid, csec) = resolve_youtube_credentials(client_id, client_secret);
+    let client = reqwest::Client::new();
+    let mut params = HashMap::new();
+    params.insert("client_id", cid.as_str());
+    params.insert("client_secret", csec.as_str());
+    params.insert("refresh_token", refresh_token);
+    params.insert("grant_type", "refresh_token");
+
+    let res = client
+        .post("https://oauth2.googleapis.com/token")
+        .form(&params)
+        .send()
+        .await?;
+
+    if !res.status().is_success() {
+        let text = res.text().await.unwrap_or_default();
+        return Err(AppError::YouTube(format!(
+            "Failed to refresh YouTube token: {}",
+            text
+        )));
+    }
+
+    let token_data: RefreshTokenResponse = res.json().await?;
+    Ok(token_data.access_token)
+}
+
+pub fn validate_youtube_credentials(credentials: &YouTubeCredentials) -> Result<(), AppError> {
+    let has_access = !credentials.access_token.trim().is_empty();
+    let has_refresh = credentials
+        .refresh_token
+        .as_ref()
+        .map(|t| !t.trim().is_empty())
+        .unwrap_or(false);
+    if !has_access && !has_refresh {
+        return Err(AppError::Auth(
+            "Please connect your YouTube account in Settings first".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub async fn upload_video_to_youtube(
     reporter: DynReporter,
     vod_id: &str,
-    access_token: &str,
+    credentials: &YouTubeCredentials,
     video_path: &Path,
     metadata: &YouTubeVideoMetadata,
     is_cancelled: Arc<AtomicBool>,
 ) -> Result<String, AppError> {
+    validate_youtube_credentials(credentials)?;
+
+    let (client_id, client_secret) =
+        resolve_youtube_credentials(&credentials.client_id, &credentials.client_secret);
+
+    let mut access_token = credentials.access_token.clone();
+    if access_token.trim().is_empty() {
+        if let Some(ref rf) = credentials.refresh_token {
+            access_token = refresh_youtube_token(&client_id, &client_secret, rf).await?;
+        } else {
+            return Err(AppError::Auth(
+                "Please connect your YouTube account in Settings first".into(),
+            ));
+        }
+    }
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(7200))
         .build()?;
@@ -210,7 +284,7 @@ pub async fn upload_video_to_youtube(
         }
     });
 
-    let init_res = client
+    let mut init_res = client
         .post(init_url)
         .header("Authorization", format!("Bearer {}", access_token))
         .header("Content-Type", "application/json; charset=UTF-8")
@@ -219,6 +293,21 @@ pub async fn upload_video_to_youtube(
         .json(&body_json)
         .send()
         .await?;
+
+    if init_res.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Some(ref rf) = credentials.refresh_token {
+            access_token = refresh_youtube_token(&client_id, &client_secret, rf).await?;
+            init_res = client
+                .post(init_url)
+                .header("Authorization", format!("Bearer {}", access_token))
+                .header("Content-Type", "application/json; charset=UTF-8")
+                .header("X-Upload-Content-Type", "video/mp4")
+                .header("X-Upload-Content-Length", total_bytes.to_string())
+                .json(&body_json)
+                .send()
+                .await?;
+        }
+    }
 
     if !init_res.status().is_success() {
         let text = init_res.text().await.unwrap_or_default();
@@ -309,6 +398,28 @@ mod tests {
         let (id, sec) = resolve_youtube_credentials("my_yt_id", "my_yt_secret");
         assert_eq!(id, "my_yt_id");
         assert_eq!(sec, "my_yt_secret");
+    }
+
+    #[test]
+    fn validate_youtube_credentials_rejects_empty_access_and_refresh() {
+        let creds = YouTubeCredentials {
+            client_id: "id".into(),
+            client_secret: "secret".into(),
+            access_token: String::new(),
+            refresh_token: None,
+        };
+        assert!(validate_youtube_credentials(&creds).is_err());
+    }
+
+    #[test]
+    fn validate_youtube_credentials_accepts_refresh_only() {
+        let creds = YouTubeCredentials {
+            client_id: "id".into(),
+            client_secret: "secret".into(),
+            access_token: String::new(),
+            refresh_token: Some("refresh".into()),
+        };
+        assert!(validate_youtube_credentials(&creds).is_ok());
     }
 
     #[test]

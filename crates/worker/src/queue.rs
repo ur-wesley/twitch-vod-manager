@@ -153,7 +153,7 @@ pub fn spawn_publish_from_storage_job(
     job_id: String,
     vod_id: String,
     source: StorageSource,
-    youtube_token: String,
+    youtube_credentials: vod_core::YouTubeCredentials,
     youtube_metadata: YouTubeVideoMetadata,
 ) {
     let is_cancelled = Arc::new(AtomicBool::new(false));
@@ -195,7 +195,7 @@ pub fn spawn_publish_from_storage_job(
             &vod_id,
             &source,
             &temp_path,
-            &youtube_token,
+            &youtube_credentials,
             &youtube_metadata,
             is_cancelled.clone(),
         )

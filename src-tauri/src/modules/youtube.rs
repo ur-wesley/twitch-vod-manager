@@ -1,25 +1,10 @@
 use crate::error::AppError;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::Instant;
-use tauri::Emitter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 pub use vod_core::YouTubeVideoMetadata;
-
-#[derive(Debug, Clone, Serialize)]
-pub struct YouTubeUploadProgress {
-    pub vod_id: String,
-    pub bytes_uploaded: u64,
-    pub total_bytes: u64,
-    pub percent: f64,
-    pub speed_mbps: f64,
-    pub video_id: Option<String>,
-}
 
 #[derive(Debug, Deserialize)]
 struct GoogleTokenResponse {
@@ -145,127 +130,4 @@ async fn exchange_google_code(
 
     let token_data: GoogleTokenResponse = res.json().await?;
     Ok((token_data.access_token, token_data.refresh_token))
-}
-
-pub async fn upload_video_to_youtube(
-    app: &tauri::AppHandle,
-    vod_id: &str,
-    access_token: &str,
-    video_path: &Path,
-    metadata: &YouTubeVideoMetadata,
-    is_cancelled: Arc<AtomicBool>,
-) -> Result<String, AppError> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(7200))
-        .build()?;
-
-    let file_metadata = tokio::fs::metadata(video_path).await?;
-    let total_bytes = file_metadata.len();
-
-    // 1. Initiate Resumable Upload
-    let init_url = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status";
-    let body_json = serde_json::json!({
-        "snippet": {
-            "title": metadata.title,
-            "description": metadata.description,
-            "tags": metadata.tags,
-            "categoryId": "20" // Gaming category
-        },
-        "status": {
-            "privacyStatus": metadata.privacy_status,
-            "selfDeclaredMadeForKids": false
-        }
-    });
-
-    let init_res = client
-        .post(init_url)
-        .header("Authorization", format!("Bearer {}", access_token))
-        .header("Content-Type", "application/json; charset=UTF-8")
-        .header("X-Upload-Content-Type", "video/mp4")
-        .header("X-Upload-Content-Length", total_bytes.to_string())
-        .json(&body_json)
-        .send()
-        .await?;
-
-    if !init_res.status().is_success() {
-        let text = init_res.text().await.unwrap_or_default();
-        return Err(AppError::YouTube(format!("Failed to initiate YouTube upload: {}", text)));
-    }
-
-    let upload_url = init_res
-        .headers()
-        .get("Location")
-        .and_then(|h| h.to_str().ok())
-        .ok_or_else(|| AppError::YouTube("Missing Location header in YouTube init response".into()))?
-        .to_string();
-
-    // 2. Upload file in 8MB chunks
-    let chunk_size = 8 * 1024 * 1024; // 8MB
-    let mut file = tokio::fs::File::open(video_path).await?;
-    let mut uploaded_bytes = 0u64;
-    let start_time = Instant::now();
-
-    let mut video_id: Option<String> = None;
-
-    while uploaded_bytes < total_bytes {
-        if is_cancelled.load(Ordering::Relaxed) {
-            return Err(AppError::Cancelled);
-        }
-
-        let remaining = total_bytes - uploaded_bytes;
-        let current_chunk_size = std::cmp::min(remaining, chunk_size as u64) as usize;
-        let mut buffer = vec![0u8; current_chunk_size];
-        file.read_exact(&mut buffer).await?;
-
-        let end_byte = uploaded_bytes + current_chunk_size as u64 - 1;
-        let content_range = format!("bytes {}-{}/{}", uploaded_bytes, end_byte, total_bytes);
-
-        let put_res = client
-            .put(&upload_url)
-            .header("Content-Type", "video/mp4")
-            .header("Content-Length", current_chunk_size.to_string())
-            .header("Content-Range", content_range)
-            .body(buffer)
-            .send()
-            .await?;
-
-        uploaded_bytes += current_chunk_size as u64;
-
-        let elapsed = start_time.elapsed().as_secs_f64();
-        let speed_mbps = if elapsed > 0.0 {
-            (uploaded_bytes as f64 * 8.0) / (elapsed * 1_000_000.0)
-        } else {
-            0.0
-        };
-        let percent = (uploaded_bytes as f64 / total_bytes as f64) * 100.0;
-
-        let status = put_res.status();
-        if status.is_success() {
-            // Upload complete: response contains video resource JSON
-            if let Ok(json) = put_res.json::<serde_json::Value>().await {
-                if let Some(id) = json["id"].as_str() {
-                    video_id = Some(id.to_string());
-                }
-            }
-        } else if status.as_u16() != 308 {
-            // 308 Resume Incomplete is expected for partial chunks
-            let text = put_res.text().await.unwrap_or_default();
-            return Err(AppError::YouTube(format!("Chunk upload failed: {}", text)));
-        }
-
-        let _ = app.emit(
-            "youtube-upload-progress",
-            YouTubeUploadProgress {
-                vod_id: vod_id.to_string(),
-                bytes_uploaded: uploaded_bytes,
-                total_bytes,
-                percent,
-                speed_mbps,
-                video_id: video_id.clone(),
-            },
-        );
-    }
-
-    let final_id = video_id.unwrap_or_default();
-    Ok(final_id)
 }

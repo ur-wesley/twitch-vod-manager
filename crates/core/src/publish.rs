@@ -3,7 +3,7 @@ use crate::reporter::DynReporter;
 use crate::storage_gdrive::{download_gdrive_file, GDriveCredentials};
 use crate::storage_s3::{download_vod_from_s3, S3Credentials};
 use crate::storage_webdav::{download_webdav_file, WebDavCredentials};
-use crate::youtube::{upload_video_to_youtube, YouTubeVideoMetadata};
+use crate::youtube::{upload_video_to_youtube, validate_youtube_credentials, YouTubeCredentials, YouTubeVideoMetadata};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -43,15 +43,11 @@ pub async fn run_publish_from_storage(
     vod_id: &str,
     source: &StorageSource,
     temp_path: &Path,
-    youtube_token: &str,
+    youtube_credentials: &YouTubeCredentials,
     metadata: &YouTubeVideoMetadata,
     is_cancelled: Arc<AtomicBool>,
 ) -> Result<String, AppError> {
-    if youtube_token.trim().is_empty() {
-        return Err(AppError::Auth(
-            "Please connect your YouTube account in Settings first".into(),
-        ));
-    }
+    validate_youtube_credentials(youtube_credentials)?;
 
     if is_cancelled.load(Ordering::Relaxed) {
         return Err(AppError::Cancelled);
@@ -112,7 +108,7 @@ pub async fn run_publish_from_storage(
     let upload_result = upload_video_to_youtube(
         reporter.clone(),
         vod_id,
-        youtube_token,
+        youtube_credentials,
         temp_path,
         metadata,
         is_cancelled.clone(),
@@ -176,7 +172,12 @@ mod tests {
             "vod1",
             &source,
             &temp,
-            "",
+            &YouTubeCredentials {
+                client_id: "id".into(),
+                client_secret: "secret".into(),
+                access_token: String::new(),
+                refresh_token: None,
+            },
             &YouTubeVideoMetadata {
                 title: "t".into(),
                 description: "d".into(),
