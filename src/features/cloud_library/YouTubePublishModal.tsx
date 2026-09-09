@@ -52,6 +52,9 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
   const [completedVideoId, setCompletedVideoId] = createSignal<string | null>(null);
   const [errorMsg, setErrorMsg] = createSignal("");
   const [connecting, setConnecting] = createSignal(false);
+  const [target, setTarget] = createSignal<"local" | "worker">("local");
+
+  const hasWorkerConfigured = () => Boolean(props.workerUrl?.trim());
 
   createEffect(() => {
     if (props.isOpen && props.source) {
@@ -64,6 +67,7 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
       setUploadProgress(null);
       setCompletedVideoId(null);
       setErrorMsg("");
+      setTarget(hasWorkerConfigured() ? "worker" : "local");
     }
   });
 
@@ -148,9 +152,9 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
     setUploadProgress(null);
 
     const metadata = buildMetadata();
-    const workerUrl = props.workerUrl?.trim();
 
-    if (workerUrl) {
+    if (hasWorkerConfigured() && target() === "worker") {
+      const workerUrl = props.workerUrl!.trim();
       workerDispatchJob({
         workerUrl,
         apiKey: props.workerApiKey,
@@ -297,6 +301,51 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
                 />
               </div>
 
+              <Show when={hasWorkerConfigured()}>
+                <div class="space-y-1.5">
+                  <label class="text-xs font-semibold text-foreground">Execution Location</label>
+                  <div class="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTarget("local")}
+                      disabled={uploading()}
+                      class={`p-2.5 rounded-lg border text-left transition-all cursor-pointer flex items-start gap-2.5 ${
+                        target() === "local"
+                          ? "border-primary bg-primary/10 text-foreground ring-1 ring-primary"
+                          : "border-border/60 hover:bg-muted/40 text-muted-foreground"
+                      }`}
+                    >
+                      <span class="i-mdi-laptop size-5 text-primary shrink-0 mt-0.5" />
+                      <div>
+                        <div class="font-semibold text-xs text-foreground">🖥️ Local PC</div>
+                        <div class="text-[10px] text-muted-foreground leading-tight">
+                          Uses local CPU/GPU & disk. App must stay open.
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTarget("worker")}
+                      disabled={uploading()}
+                      class={`p-2.5 rounded-lg border text-left transition-all cursor-pointer flex items-start gap-2.5 ${
+                        target() === "worker"
+                          ? "border-primary bg-primary/10 text-foreground ring-1 ring-primary"
+                          : "border-border/60 hover:bg-muted/40 text-muted-foreground"
+                      }`}
+                    >
+                      <span class="i-mdi-cloud-outline size-5 text-primary shrink-0 mt-0.5" />
+                      <div>
+                        <div class="font-semibold text-xs text-foreground">☁️ Cloud VPS Worker</div>
+                        <div class="text-[10px] text-muted-foreground leading-tight">
+                          Runs 24/7 on your VPS. Works even if you close the app!
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </Show>
+
               <div class="grid grid-cols-2 gap-3">
                 <div class="space-y-1">
                   <label class="text-xs font-semibold text-foreground">Privacy</label>
@@ -359,8 +408,15 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
               disabled={uploading() || !title() || !props.source}
               class="gap-1.5 bg-red-600 hover:bg-red-700 text-white"
             >
-              <span class="i-mdi-upload size-4" aria-hidden="true" />
-              {uploading() ? "Publishing..." : "Publish to YouTube"}
+              <span
+                class={`${uploading() ? "i-mdi-loading animate-spin" : hasWorkerConfigured() && target() === "worker" ? "i-mdi-cloud-upload" : "i-mdi-upload"} size-4`}
+                aria-hidden="true"
+              />
+              {uploading()
+                ? "Publishing..."
+                : hasWorkerConfigured() && target() === "worker"
+                  ? "Offload to VPS Worker"
+                  : "Publish to YouTube"}
             </Button>
           </Show>
         </DialogFooter>
