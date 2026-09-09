@@ -99,25 +99,14 @@ fn format_ffmpeg_failure_error(
     AppError::Compression(full_error_msg)
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn run_ffmpeg_compress_once(
-    reporter: DynReporter,
-    vod_id: &str,
+fn build_ffmpeg_compress_args(
     concat_list_path: &Path,
     output_mp4_path: &Path,
     preset: &str,
     crf: u8,
-    estimated_duration_secs: Option<f64>,
     trim_start_secs: Option<f64>,
     trim_duration_secs: Option<f64>,
-    is_cancelled: Arc<AtomicBool>,
-) -> Result<FfmpegExecutionResult, FfmpegExecutionError> {
-    if let Some(parent) = output_mp4_path.parent() {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|e| FfmpegExecutionError::Io(e.into()))?;
-    }
-
+) -> Vec<String> {
     let mut args: Vec<String> = vec![
         "-y".into(),
         "-f".into(),
@@ -139,10 +128,21 @@ async fn run_ffmpeg_compress_once(
         args.push(format!("{:.3}", dur));
     }
 
+    args.extend_from_slice(&[
+        "-map".into(),
+        "0:v".into(),
+        "-map".into(),
+        "0:a".into(),
+    ]);
+
     match preset {
         "passthrough" => {
-            args.push("-c".into());
-            args.push("copy".into());
+            args.extend_from_slice(&[
+                "-c".into(),
+                "copy".into(),
+                "-bsf:a".into(),
+                "aac_adtstoasc".into(),
+            ]);
         }
         "hevc_nvenc" => {
             args.extend_from_slice(&[
@@ -205,7 +205,6 @@ async fn run_ffmpeg_compress_once(
             ]);
         }
         _ => {
-            // default libx264
             args.extend_from_slice(&[
                 "-c:v".into(),
                 "libx264".into(),
@@ -221,15 +220,43 @@ async fn run_ffmpeg_compress_once(
         }
     }
 
-    // Fast-start MP4 container for web & cloud streaming
     args.push("-movflags".into());
     args.push("+faststart".into());
-
-    // Output progress to stdout pipe
     args.push("-progress".into());
     args.push("pipe:1".into());
     args.push("-nostats".into());
     args.push(output_mp4_path.to_string_lossy().to_string());
+
+    args
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_ffmpeg_compress_once(
+    reporter: DynReporter,
+    vod_id: &str,
+    concat_list_path: &Path,
+    output_mp4_path: &Path,
+    preset: &str,
+    crf: u8,
+    estimated_duration_secs: Option<f64>,
+    trim_start_secs: Option<f64>,
+    trim_duration_secs: Option<f64>,
+    is_cancelled: Arc<AtomicBool>,
+) -> Result<FfmpegExecutionResult, FfmpegExecutionError> {
+    if let Some(parent) = output_mp4_path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| FfmpegExecutionError::Io(e.into()))?;
+    }
+
+    let args = build_ffmpeg_compress_args(
+        concat_list_path,
+        output_mp4_path,
+        preset,
+        crf,
+        trim_start_secs,
+        trim_duration_secs,
+    );
 
     reporter.report_log(
         vod_id,
@@ -558,6 +585,45 @@ mod tests {
 
     struct DummyReporter;
     impl ProgressReporter for DummyReporter {}
+
+    fn args_has_flag_value(args: &[String], flag: &str, value: &str) -> bool {
+        args.windows(2).any(|w| w[0] == flag && w[1] == value)
+    }
+
+    #[test]
+    fn test_passthrough_ffmpeg_args() {
+        let args = build_ffmpeg_compress_args(
+            Path::new("/tmp/concat_list.txt"),
+            Path::new("/tmp/output.mp4"),
+            "passthrough",
+            24,
+            None,
+            None,
+        );
+
+        assert!(args_has_flag_value(&args, "-map", "0:v"));
+        assert!(args_has_flag_value(&args, "-map", "0:a"));
+        assert!(args_has_flag_value(&args, "-c", "copy"));
+        assert!(args_has_flag_value(&args, "-bsf:a", "aac_adtstoasc"));
+        assert!(args.contains(&"+faststart".to_string()));
+    }
+
+    #[test]
+    fn test_encode_ffmpeg_args_maps_av_no_bsf() {
+        let args = build_ffmpeg_compress_args(
+            Path::new("/tmp/concat_list.txt"),
+            Path::new("/tmp/output.mp4"),
+            "hevc_nvenc",
+            24,
+            None,
+            None,
+        );
+
+        assert!(args_has_flag_value(&args, "-map", "0:v"));
+        assert!(args_has_flag_value(&args, "-map", "0:a"));
+        assert!(!args.contains(&"-bsf:a".to_string()));
+        assert!(args_has_flag_value(&args, "-c:v", "hevc_nvenc"));
+    }
 
     #[test]
     fn test_is_nvenc_failure_detection() {
