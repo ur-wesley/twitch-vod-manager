@@ -4,6 +4,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tracing::{error, info};
 use vod_core::pipeline::{run_archive_pipeline, PipelineConfig};
+use vod_core::publish::{publish_temp_path, run_publish_from_storage, StorageSource};
+use vod_core::youtube::YouTubeVideoMetadata;
 use vod_core::reporter::{
     CompressionProgress, DownloadProgress, DriveTransferProgress, ProgressReporter,
     S3TransferProgress, YouTubeUploadProgress,
@@ -144,6 +146,108 @@ impl ProgressReporter for WorkerProgressReporter {
         info!(job_id = %self.job_id, "{}", message);
         self.db.append_log(&self.job_id, message);
     }
+}
+
+pub fn spawn_publish_from_storage_job(
+    state: AppState,
+    job_id: String,
+    vod_id: String,
+    source: StorageSource,
+    youtube_token: String,
+    youtube_metadata: YouTubeVideoMetadata,
+) {
+    let is_cancelled = Arc::new(AtomicBool::new(false));
+    let cancellation_clone = is_cancelled.clone();
+    let job_id_clone = job_id.clone();
+    let state_clone = state.clone();
+
+    tokio::spawn(async move {
+        {
+            let mut active = state_clone.active_cancellations.write().await;
+            active.insert(job_id_clone.clone(), cancellation_clone);
+        }
+
+        let reporter = Arc::new(WorkerProgressReporter::new(
+            job_id_clone.clone(),
+            state_clone.db.clone(),
+        ));
+
+        let temp_dir = state_clone.data_dir.join("temp");
+        let _ = tokio::fs::create_dir_all(&temp_dir).await;
+        let temp_path = publish_temp_path(&temp_dir, &job_id_clone);
+
+        info!(
+            "Starting publish-from-storage job #{} for VOD {}",
+            job_id_clone,
+            vod_id
+        );
+        state_clone.db.append_log(
+            &job_id_clone,
+            &format!(
+                "🚀 Publish job #{} initialized for VOD {}",
+                job_id_clone,
+                vod_id
+            ),
+        );
+
+        let result = run_publish_from_storage(
+            reporter,
+            &vod_id,
+            &source,
+            &temp_path,
+            &youtube_token,
+            &youtube_metadata,
+            is_cancelled.clone(),
+        )
+        .await;
+
+        match result {
+            Ok(video_id) => {
+                info!("Publish job #{} completed successfully", job_id_clone);
+                state_clone.db.append_log(
+                    &job_id_clone,
+                    "✅ YouTube publish finished successfully!",
+                );
+                let _ = state_clone.db.update_job_success(
+                    &job_id_clone,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(&video_id),
+                );
+            }
+            Err(vod_core::AppError::Cancelled) => {
+                info!("Publish job #{} was cancelled", job_id_clone);
+                state_clone.db.append_log(&job_id_clone, "⚠️ Job was cancelled by user");
+                let _ = state_clone.db.update_job_status(
+                    &job_id_clone,
+                    "cancelled",
+                    "cancelled",
+                    0.0,
+                    Some("Job was cancelled by user"),
+                );
+            }
+            Err(e) => {
+                error!("Publish job #{} failed: {}", job_id_clone, e);
+                state_clone.db.append_log(
+                    &job_id_clone,
+                    &format!("❌ Job failed: {}", e),
+                );
+                let _ = state_clone.db.update_job_status(
+                    &job_id_clone,
+                    "failed",
+                    "failed",
+                    0.0,
+                    Some(&e.to_string()),
+                );
+            }
+        }
+
+        let mut active = state_clone.active_cancellations.write().await;
+        active.remove(&job_id_clone);
+    });
 }
 
 pub fn spawn_worker_job(state: AppState, job_id: String, config: PipelineConfig) {

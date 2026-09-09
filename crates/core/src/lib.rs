@@ -4,6 +4,7 @@ pub mod compressor;
 pub mod downloader;
 pub mod error;
 pub mod pipeline;
+pub mod publish;
 pub mod reporter;
 pub mod settings;
 pub mod storage_gdrive;
@@ -23,6 +24,10 @@ pub use compressor::{compress_vod, detect_ffmpeg, FfmpegInfo};
 pub use downloader::{download_vod_chunks, DownloadResult};
 pub use error::{AppError, StableError};
 pub use pipeline::{run_archive_pipeline, PipelineConfig, PipelineResult};
+pub use publish::{
+    local_publish_temp_path, publish_temp_path, remove_temp_file, run_publish_from_storage,
+    StorageSource,
+};
 pub use reporter::{
     CallbackProgressReporter, CompressionProgress, DownloadProgress, DriveTransferProgress,
     DynReporter, NoopProgressReporter, PipelineProgress, ProgressReporter, S3TransferProgress,

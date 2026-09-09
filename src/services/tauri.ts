@@ -205,6 +205,14 @@ export const publishToYouTube = (
 ): ResultAsync<string, StableError> =>
   tauriInvoke<string>("publish_to_youtube", { vodId, localVideoPath, metadata });
 
+export const publishCloudToYouTube = (
+  vodId: string,
+  source: string,
+  sourceId: string,
+  metadata: YouTubeVideoMetadata,
+): ResultAsync<string, StableError> =>
+  tauriInvoke<string>("publish_cloud_to_youtube", { vodId, source, sourceId, metadata });
+
 // Cloud VPS Worker API
 export const workerGetStatus = (
   workerUrl: string,
@@ -246,6 +254,8 @@ export interface WorkerDispatchJobArgs {
   uploadToYouTube?: boolean;
   youtubeMetadata?: YouTubeVideoMetadata;
   deleteFromTwitchAfter?: boolean;
+  source?: string;
+  sourceId?: string;
 }
 
 export const workerDispatchJob = (
@@ -273,6 +283,8 @@ export const workerDispatchJob = (
     uploadToYouTube: args.uploadToYouTube,
     youtubeMetadata: args.youtubeMetadata,
     deleteFromTwitchAfter: args.deleteFromTwitchAfter,
+    source: args.source,
+    sourceId: args.sourceId,
   });
 
 export const workerCancelJob = (

@@ -193,6 +193,13 @@ export interface YouTubeVideoMetadata {
   tags?: string[];
 }
 
+export interface CloudPublishSource {
+  provider: "gdrive" | "s3" | "webdav";
+  id: string;
+  title: string;
+  vodId: string;
+}
+
 export interface StableError {
   code: string;
   message: string;

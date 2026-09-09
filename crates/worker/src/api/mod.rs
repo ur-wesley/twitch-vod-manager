@@ -19,6 +19,7 @@ use tokio_util::io::ReaderStream;
 use uuid::Uuid;
 use vod_core::compressor::detect_ffmpeg;
 use vod_core::pipeline::PipelineConfig;
+use vod_core::publish::StorageSource;
 use vod_core::storage_gdrive::GDriveCredentials;
 use vod_core::storage_s3::S3Credentials;
 use vod_core::storage_webdav::WebDavCredentials;
@@ -106,6 +107,7 @@ fn cred_presence(db: &Database) -> (bool, bool, bool, bool) {
 pub struct CreateJobRequest {
     pub vod_id: String,
     pub title: String,
+    #[serde(default)]
     pub playlist_url: String,
     pub preset: Option<String>,
     pub crf: Option<u8>,
@@ -131,6 +133,10 @@ pub struct CreateJobRequest {
     pub delete_from_twitch_after: Option<bool>,
     pub twitch_client_id: Option<String>,
     pub twitch_token: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub source_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -434,8 +440,15 @@ async fn create_job_handler(
         .insert_job(&job_id, &payload.vod_id, &payload.title, "queued")
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let source_type = payload.source.as_deref();
+    let needs_s3 = payload.upload_to_s3.unwrap_or(false) || source_type == Some("s3");
+    let needs_gdrive =
+        payload.upload_to_gdrive.unwrap_or(false) || source_type == Some("gdrive");
+    let needs_webdav =
+        payload.upload_to_webdav.unwrap_or(false) || source_type == Some("webdav");
+
     // S3 config fallback to worker DB if not explicitly supplied
-    let s3_config = if payload.upload_to_s3.unwrap_or(false) {
+    let s3_config = if needs_s3 {
         if payload.s3_config.is_some() {
             payload.s3_config
         } else {
@@ -461,7 +474,7 @@ async fn create_job_handler(
     };
 
     // Google Drive fallback to worker DB
-    let gdrive_config = if payload.upload_to_gdrive.unwrap_or(false) {
+    let gdrive_config = if needs_gdrive {
         let mut cfg = if let Some(c) = payload.gdrive_config {
             c
         } else {
@@ -512,7 +525,7 @@ async fn create_job_handler(
         None
     };
 
-    if payload.upload_to_gdrive.unwrap_or(false) && gdrive_config.is_none() {
+    if needs_gdrive && gdrive_config.is_none() {
         return Ok((
             StatusCode::BAD_REQUEST,
             Json(CreateJobResponse {
@@ -523,7 +536,7 @@ async fn create_job_handler(
     }
 
     // WebDAV fallback to worker DB
-    let webdav_config = if payload.upload_to_webdav.unwrap_or(false) {
+    let webdav_config = if needs_webdav {
         if payload.webdav_config.is_some() {
             payload.webdav_config
         } else {
@@ -545,6 +558,135 @@ async fn create_job_handler(
     } else {
         None
     };
+
+    if let Some(ref source) = payload.source {
+        let source_id = match payload.source_id.as_deref().filter(|s| !s.is_empty()) {
+            Some(id) => id,
+            None => {
+                return Ok((
+                    StatusCode::BAD_REQUEST,
+                    Json(CreateJobResponse {
+                        job_id: String::new(),
+                        message: "source_id is required for publish-from-storage jobs".to_string(),
+                    }),
+                ));
+            }
+        };
+
+        if !payload.upload_to_youtube.unwrap_or(false) {
+            return Ok((
+                StatusCode::BAD_REQUEST,
+                Json(CreateJobResponse {
+                    job_id: String::new(),
+                    message: "upload_to_youtube must be true for publish-from-storage jobs".to_string(),
+                }),
+            ));
+        }
+
+        let youtube_token = match payload
+            .youtube_token
+            .as_deref()
+            .filter(|t| !t.is_empty())
+        {
+            Some(token) => token,
+            None => {
+                return Ok((
+                    StatusCode::BAD_REQUEST,
+                    Json(CreateJobResponse {
+                        job_id: String::new(),
+                        message: "youtube_token is required for publish-from-storage jobs".to_string(),
+                    }),
+                ));
+            }
+        };
+
+        let youtube_metadata = match payload.youtube_metadata.clone() {
+            Some(meta) => meta,
+            None => {
+                return Ok((
+                    StatusCode::BAD_REQUEST,
+                    Json(CreateJobResponse {
+                        job_id: String::new(),
+                        message: "youtube_metadata is required for publish-from-storage jobs".to_string(),
+                    }),
+                ));
+            }
+        };
+
+        let storage_source = match source.as_str() {
+            "gdrive" => match gdrive_config {
+                Some(creds) => StorageSource::Gdrive {
+                    file_id: source_id.to_string(),
+                    creds,
+                },
+                None => {
+                    return Ok((
+                        StatusCode::BAD_REQUEST,
+                        Json(CreateJobResponse {
+                            job_id: String::new(),
+                            message: "Google Drive credentials are not configured on worker".to_string(),
+                        }),
+                    ));
+                }
+            },
+            "s3" => match s3_config {
+                Some(creds) => StorageSource::S3 {
+                    key: source_id.to_string(),
+                    creds,
+                },
+                None => {
+                    return Ok((
+                        StatusCode::BAD_REQUEST,
+                        Json(CreateJobResponse {
+                            job_id: String::new(),
+                            message: "S3 credentials are not configured on worker".to_string(),
+                        }),
+                    ));
+                }
+            },
+            "webdav" => match webdav_config {
+                Some(creds) => StorageSource::Webdav {
+                    href: source_id.to_string(),
+                    creds,
+                },
+                None => {
+                    return Ok((
+                        StatusCode::BAD_REQUEST,
+                        Json(CreateJobResponse {
+                            job_id: String::new(),
+                            message: "WebDAV credentials are not configured on worker".to_string(),
+                        }),
+                    ));
+                }
+            },
+            _ => {
+                return Ok((
+                    StatusCode::BAD_REQUEST,
+                    Json(CreateJobResponse {
+                        job_id: String::new(),
+                        message: format!("Unknown source '{}'. Use gdrive, s3, or webdav.", source),
+                    }),
+                ));
+            }
+        };
+
+        crate::queue::spawn_publish_from_storage_job(
+            state,
+            job_id.clone(),
+            payload.vod_id.clone(),
+            storage_source,
+            youtube_token.to_string(),
+            youtube_metadata,
+        );
+
+        return Ok((
+            StatusCode::ACCEPTED,
+            Json(CreateJobResponse {
+                job_id,
+                message: "Publish-from-storage job queued".to_string(),
+            }),
+        ));
+    }
 
     let preset = payload.preset.unwrap_or_else(|| {
         state

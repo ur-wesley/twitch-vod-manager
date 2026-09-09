@@ -63,6 +63,7 @@ import type {
   TwitchUser,
   TwitchVod,
   WebDavFile,
+  CloudPublishSource,
 } from "~/types";
 
 export const App: Component = () => {
@@ -98,7 +99,8 @@ export const App: Component = () => {
   const [archiveModalOpen, setArchiveModalOpen] = createSignal(false);
   const [selectedVodForDelete, setSelectedVodForDelete] = createSignal<TwitchVod | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = createSignal(false);
-  const [selectedKeyForYouTube, setSelectedKeyForYouTube] = createSignal("");
+  const [selectedYouTubeSource, setSelectedYouTubeSource] =
+    createSignal<CloudPublishSource | null>(null);
   const [youtubeModalOpen, setYoutubeModalOpen] = createSignal(false);
   const [missingToolsModalOpen, setMissingToolsModalOpen] = createSignal(false);
 
@@ -674,10 +676,12 @@ export const App: Component = () => {
     );
   };
 
-  const handleOpenYouTubeModal = (key: string) => {
-    setSelectedKeyForYouTube(key);
+  const handleOpenYouTubeModal = (source: CloudPublishSource) => {
+    setSelectedYouTubeSource(source);
     setYoutubeModalOpen(true);
   };
+
+  const vodTitleFromFilename = (name: string) => name.replace(/\.mp4$/i, "");
 
   const parseTwitchDuration = (dur: string): number => {
     let total = 0;
@@ -1308,19 +1312,41 @@ export const App: Component = () => {
                 loading={loadingS3()}
                 onRefresh={refreshS3Objects}
                 onDownload={handleDownloadS3Vod}
-                onPublishYouTube={handleOpenYouTubeModal}
+                onPublishYouTube={(key) => {
+                  const name = key.split("/").pop() || key;
+                  handleOpenYouTubeModal({
+                    provider: "s3",
+                    id: key,
+                    title: vodTitleFromFilename(name),
+                    vodId: vodTitleFromFilename(name),
+                  });
+                }}
                 onDelete={handleDeleteS3Vod}
                 gdriveFiles={gdriveFiles()}
                 loadingGdrive={loadingGdrive()}
                 onRefreshGdrive={refreshGdriveFiles}
                 onDownloadGdrive={handleDownloadGdrive}
-                onPublishYouTubeGdrive={(f) => handleOpenYouTubeModal(f.name)}
+                onPublishYouTubeGdrive={(f) =>
+                  handleOpenYouTubeModal({
+                    provider: "gdrive",
+                    id: f.id,
+                    title: vodTitleFromFilename(f.name),
+                    vodId: vodTitleFromFilename(f.name),
+                  })
+                }
                 onDeleteGdrive={handleDeleteGdrive}
                 webdavFiles={webdavFiles()}
                 loadingWebdav={loadingWebdav()}
                 onRefreshWebdav={refreshWebdavFiles}
                 onDownloadWebdav={handleDownloadWebdav}
-                onPublishYouTubeWebdav={(f) => handleOpenYouTubeModal(f.name)}
+                onPublishYouTubeWebdav={(f) =>
+                  handleOpenYouTubeModal({
+                    provider: "webdav",
+                    id: f.href,
+                    title: vodTitleFromFilename(f.name),
+                    vodId: vodTitleFromFilename(f.name),
+                  })
+                }
                 onDeleteWebdav={handleDeleteWebdav}
                 gdriveQuota={gdriveQuota()}
                 loadingGdriveQuota={loadingGdriveQuota()}
@@ -1403,9 +1429,9 @@ export const App: Component = () => {
       <YouTubePublishModal
         isOpen={youtubeModalOpen()}
         onClose={() => setYoutubeModalOpen(false)}
-        vodId={selectedKeyForYouTube().split("/").pop()?.replace(".mp4", "") || ""}
-        vodTitle={selectedKeyForYouTube().split("/").pop()?.replace(".mp4", "") || "VOD"}
-        localVideoPath={`${settings()?.output_dir || "C:\\TwitchVODs"}\\${selectedKeyForYouTube().split("/").pop()}`}
+        source={selectedYouTubeSource()}
+        workerUrl={settings()?.worker_url}
+        workerApiKey={settings()?.worker_api_key}
         isYouTubeConnected={Boolean(settings()?.youtube_access_token)}
         onYouTubeConnected={() => {
           getSettings().match(
@@ -1413,6 +1439,10 @@ export const App: Component = () => {
             () => {},
           );
           toast.success("YouTube account connected!");
+        }}
+        onDispatchedToWorker={() => {
+          toast.success("Publish job dispatched to Cloud Worker");
+          setActiveTab("tasks");
         }}
       />
 

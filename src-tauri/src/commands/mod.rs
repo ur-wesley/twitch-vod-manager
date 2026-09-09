@@ -343,7 +343,12 @@ impl vod_core::reporter::ProgressReporter for TauriProgressReporter {
     }
     fn report_s3(&self, p: &vod_core::reporter::S3TransferProgress) {
         use tauri::Emitter;
-        let _ = self.app.emit("s3-upload-progress", p);
+        let event = if p.is_upload {
+            "s3-upload-progress"
+        } else {
+            "s3-download-progress"
+        };
+        let _ = self.app.emit(event, p);
     }
     fn report_youtube(&self, p: &vod_core::reporter::YouTubeUploadProgress) {
         use tauri::Emitter;
@@ -988,6 +993,112 @@ pub async fn publish_to_youtube(
 }
 
 #[tauri::command]
+pub async fn publish_cloud_to_youtube(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    vod_id: String,
+    source: String,
+    source_id: String,
+    metadata: YouTubeVideoMetadata,
+) -> Result<String, StableError> {
+    let settings = state.settings.read().await.clone();
+    let token = settings.youtube_access_token.clone().unwrap_or_default();
+    if token.is_empty() {
+        return Err(StableError::new(
+            "AUTH_ERROR",
+            "Please connect your YouTube account in Settings first",
+        ));
+    }
+
+    let storage_source = match source.as_str() {
+        "gdrive" => {
+            let (client_id, client_secret) = vod_core::storage_gdrive::resolve_gdrive_credentials(
+                settings.gdrive_client_id.as_deref().unwrap_or_default(),
+                settings.gdrive_client_secret.as_deref().unwrap_or_default(),
+            );
+            let access_token = settings.gdrive_access_token.clone().unwrap_or_default();
+            if access_token.is_empty() && settings.gdrive_refresh_token.is_none() {
+                return Err(StableError::new(
+                    "AUTH_ERROR",
+                    "Please connect your Google Drive account in Settings first",
+                ));
+            }
+            vod_core::StorageSource::Gdrive {
+                file_id: source_id,
+                creds: vod_core::GDriveCredentials {
+                    client_id,
+                    client_secret,
+                    access_token,
+                    refresh_token: settings.gdrive_refresh_token,
+                    folder_id: settings.gdrive_folder_id,
+                },
+            }
+        }
+        "s3" => {
+            let endpoint = settings.s3_endpoint.clone();
+            let bucket = settings.s3_bucket.clone();
+            if endpoint.is_empty() || bucket.is_empty() {
+                return Err(StableError::new(
+                    "CONFIG_ERROR",
+                    "S3 Endpoint and Bucket must be configured in Settings",
+                ));
+            }
+            vod_core::StorageSource::S3 {
+                key: source_id,
+                creds: vod_core::S3Credentials {
+                    endpoint,
+                    region: settings.s3_region.clone(),
+                    bucket,
+                    access_key: settings.s3_access_key.clone(),
+                    secret_key: settings.s3_secret_key.clone(),
+                },
+            }
+        }
+        "webdav" => {
+            let endpoint = settings.webdav_endpoint.clone().unwrap_or_default();
+            let username = settings.webdav_username.clone().unwrap_or_default();
+            if endpoint.is_empty() || username.is_empty() {
+                return Err(StableError::new(
+                    "CONFIG_ERROR",
+                    "WebDAV endpoint and username must be configured in Settings",
+                ));
+            }
+            vod_core::StorageSource::Webdav {
+                href: source_id,
+                creds: vod_core::WebDavCredentials {
+                    endpoint,
+                    username,
+                    password: settings.webdav_password.clone().unwrap_or_default(),
+                    folder: settings.webdav_folder.clone(),
+                },
+            }
+        }
+        _ => {
+            return Err(StableError::new(
+                "CONFIG_ERROR",
+                format!("Unknown source '{}'. Use gdrive, s3, or webdav.", source),
+            ));
+        }
+    };
+
+    let temp_path = vod_core::local_publish_temp_path(&vod_id);
+    state.is_cancelled.store(false, Ordering::Relaxed);
+    let reporter = std::sync::Arc::new(TauriProgressReporter { app: app.clone() });
+
+    vod_core::run_publish_from_storage(
+        reporter,
+        &vod_id,
+        &storage_source,
+        &temp_path,
+        &token,
+        &metadata,
+        state.is_cancelled.clone(),
+    )
+    .await
+    .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn delete_twitch_vod(
     state: State<'_, AppState>,
     vod_id: String,
@@ -1174,6 +1285,8 @@ pub async fn worker_dispatch_job(
     upload_to_youtube: Option<bool>,
     youtube_metadata: Option<YouTubeVideoMetadata>,
     delete_from_twitch_after: Option<bool>,
+    source: Option<String>,
+    source_id: Option<String>,
 ) -> Result<serde_json::Value, StableError> {
     let (s3_ep, s3_reg, s3_bkt, s3_ak, s3_sk, twitch_cid, twitch_token, yt_token, gd_cid, gd_cs, gd_tok, gd_rtok, gd_fid, wd_ep, wd_u, wd_p, wd_f) = {
         let s = state.settings.read().await;
@@ -1212,7 +1325,11 @@ pub async fn worker_dispatch_job(
         vod_core::storage_gdrive::resolve_gdrive_credentials(c, sec)
     };
 
-    let s3_config = if upload_to_s3.unwrap_or(false) && !s3_ep.is_empty() && !s3_bkt.is_empty() {
+    let needs_s3 = upload_to_s3.unwrap_or(false) || source.as_deref() == Some("s3");
+    let needs_gdrive = upload_to_gdrive.unwrap_or(false) || source.as_deref() == Some("gdrive");
+    let needs_webdav = upload_to_webdav.unwrap_or(false) || source.as_deref() == Some("webdav");
+
+    let s3_config = if needs_s3 && !s3_ep.is_empty() && !s3_bkt.is_empty() {
         Some(serde_json::json!({
             "endpoint": s3_ep,
             "region": s3_reg,
@@ -1224,7 +1341,7 @@ pub async fn worker_dispatch_job(
         None
     };
 
-    let gdrive_config = if upload_to_gdrive.unwrap_or(false) && (gd_tok.is_some() || gd_rtok.is_some()) {
+    let gdrive_config = if needs_gdrive && (gd_tok.is_some() || gd_rtok.is_some()) {
         Some(serde_json::json!({
             "client_id": resolved_gd_cid,
             "client_secret": resolved_gd_cs,
@@ -1236,7 +1353,7 @@ pub async fn worker_dispatch_job(
         None
     };
 
-    let webdav_config = if upload_to_webdav.unwrap_or(false) && wd_ep.is_some() {
+    let webdav_config = if needs_webdav && wd_ep.is_some() {
         Some(serde_json::json!({
             "endpoint": wd_ep.unwrap_or_default(),
             "username": wd_u.unwrap_or_default(),
@@ -1271,6 +1388,8 @@ pub async fn worker_dispatch_job(
         "delete_from_twitch_after": delete_from_twitch_after,
         "twitch_client_id": Some(twitch_cid),
         "twitch_token": twitch_token,
+        "source": source,
+        "source_id": source_id,
     });
 
     let client = reqwest::Client::builder()

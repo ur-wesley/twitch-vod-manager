@@ -74,6 +74,7 @@ pub fn run() {
             logout_youtube,
             set_youtube_token,
             publish_to_youtube,
+            publish_cloud_to_youtube,
             import_settings_toml,
             export_settings_toml,
             download_and_install_ffmpeg,

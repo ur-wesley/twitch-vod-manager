@@ -12,17 +12,30 @@ import {
 import { Input } from "~/components/ui/input";
 import { Progress } from "~/components/ui/progress";
 import { formatBytes, formatSpeed } from "~/lib/utils";
-import { loginYouTube, onYouTubeUploadProgress, publishToYouTube } from "~/services/tauri";
-import type { YouTubeUploadProgress } from "~/types";
+import {
+  loginYouTube,
+  onDriveUploadProgress,
+  onS3DownloadProgress,
+  onYouTubeUploadProgress,
+  publishCloudToYouTube,
+  workerDispatchJob,
+} from "~/services/tauri";
+import type {
+  CloudPublishSource,
+  DriveTransferProgress,
+  S3TransferProgress,
+  YouTubeUploadProgress,
+} from "~/types";
 
 export interface YouTubePublishModalProps {
   isOpen: boolean;
   onClose: () => void;
-  vodId: string;
-  vodTitle: string;
-  localVideoPath: string;
+  source: CloudPublishSource | null;
   isYouTubeConnected: boolean;
+  workerUrl?: string;
+  workerApiKey?: string;
   onYouTubeConnected: () => void;
+  onDispatchedToWorker?: () => void;
 }
 
 export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) => {
@@ -31,36 +44,70 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
   const [privacy, setPrivacy] = createSignal<"private" | "unlisted" | "public">("unlisted");
   const [tags, setTags] = createSignal("Twitch, VOD, Gaming, Stream");
   const [uploading, setUploading] = createSignal(false);
-  const [progress, setProgress] = createSignal<YouTubeUploadProgress | null>(null);
+  const [phase, setPhase] = createSignal<"downloading" | "uploading">("downloading");
+  const [downloadProgress, setDownloadProgress] = createSignal<
+    DriveTransferProgress | S3TransferProgress | null
+  >(null);
+  const [uploadProgress, setUploadProgress] = createSignal<YouTubeUploadProgress | null>(null);
   const [completedVideoId, setCompletedVideoId] = createSignal<string | null>(null);
   const [errorMsg, setErrorMsg] = createSignal("");
   const [connecting, setConnecting] = createSignal(false);
 
   createEffect(() => {
-    if (props.isOpen) {
-      setTitle(`[VOD] ${props.vodTitle}`);
+    if (props.isOpen && props.source) {
+      setTitle(`[VOD] ${props.source.title}`);
       setDescription(`Stream broadcast archive.\nOriginally streamed on Twitch.\n\n#Twitch #VOD`);
       setUploading(false);
       setConnecting(false);
-      setProgress(null);
+      setPhase("downloading");
+      setDownloadProgress(null);
+      setUploadProgress(null);
       setCompletedVideoId(null);
       setErrorMsg("");
     }
   });
 
   createEffect(() => {
-    let unlisten: (() => void) | undefined;
+    let unlistenDrive: (() => void) | undefined;
+    let unlistenS3: (() => void) | undefined;
+    let unlistenYt: (() => void) | undefined;
+
+    const vodId = props.source?.vodId;
+    if (!props.isOpen || !vodId) return;
+
+    onDriveUploadProgress((p) => {
+      if (p.vod_id !== vodId) return;
+      setPhase("downloading");
+      setDownloadProgress(p);
+    }).then((un) => {
+      unlistenDrive = un;
+    });
+
+    onS3DownloadProgress((p) => {
+      if (p.vod_id !== vodId) return;
+      setPhase("downloading");
+      setDownloadProgress(p);
+    }).then((un) => {
+      unlistenS3 = un;
+    });
+
     onYouTubeUploadProgress((p) => {
-      setProgress(p);
+      if (p.vod_id !== vodId) return;
+      setPhase("uploading");
+      setUploadProgress(p);
       if (p.video_id) {
         setCompletedVideoId(p.video_id);
         setUploading(false);
       }
     }).then((un) => {
-      unlisten = un;
+      unlistenYt = un;
     });
 
-    return () => unlisten?.();
+    return () => {
+      unlistenDrive?.();
+      unlistenS3?.();
+      unlistenYt?.();
+    };
   });
 
   const handleConnect = async () => {
@@ -74,26 +121,62 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
     );
   };
 
+  const buildMetadata = () => {
+    const tagList = tags()
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    return {
+      title: title(),
+      description: description(),
+      privacy_status: privacy(),
+      tags: tagList,
+    };
+  };
+
   const handleUpload = () => {
-    if (!props.localVideoPath) {
-      setErrorMsg("Video file is not available locally. Download from bucket first.");
+    const source = props.source;
+    if (!source) {
+      setErrorMsg("No cloud file selected.");
       return;
     }
 
     setUploading(true);
     setErrorMsg("");
+    setPhase("downloading");
+    setDownloadProgress(null);
+    setUploadProgress(null);
 
-    const tagList = tags()
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
+    const metadata = buildMetadata();
+    const workerUrl = props.workerUrl?.trim();
 
-    publishToYouTube(props.vodId, props.localVideoPath, {
-      title: title(),
-      description: description(),
-      privacy_status: privacy(),
-      tags: tagList,
-    }).match(
+    if (workerUrl) {
+      workerDispatchJob({
+        workerUrl,
+        apiKey: props.workerApiKey,
+        vodId: source.vodId,
+        title: source.title,
+        playlistUrl: "",
+        saveLocal: false,
+        uploadToYouTube: true,
+        youtubeMetadata: metadata,
+        source: source.provider,
+        sourceId: source.id,
+      }).match(
+        () => {
+          setUploading(false);
+          props.onDispatchedToWorker?.();
+          props.onClose();
+        },
+        (err) => {
+          setErrorMsg(err.message);
+          setUploading(false);
+        },
+      );
+      return;
+    }
+
+    publishCloudToYouTube(source.vodId, source.provider, source.id, metadata).match(
       (id) => {
         setCompletedVideoId(id);
         setUploading(false);
@@ -105,6 +188,27 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
     );
   };
 
+  const activePercent = () => {
+    if (phase() === "uploading" && uploadProgress()) {
+      return uploadProgress()!.percent;
+    }
+    const dl = downloadProgress();
+    return dl?.percent ?? 0;
+  };
+
+  const activeBytesLabel = () => {
+    if (phase() === "uploading" && uploadProgress()) {
+      const p = uploadProgress()!;
+      return `${formatBytes(p.bytes_uploaded)} / ${formatBytes(p.total_bytes)} (${formatSpeed(p.speed_mbps || 0)})`;
+    }
+    const dl = downloadProgress();
+    if (!dl) return "";
+    const transferred = "bytes_transferred" in dl ? dl.bytes_transferred : 0;
+    const total = dl.total_bytes;
+    const speed = dl.speed_mbps || 0;
+    return `${formatBytes(transferred)} / ${formatBytes(total)} (${formatSpeed(speed)})`;
+  };
+
   return (
     <Dialog open={props.isOpen} onOpenChange={(open) => !open && !uploading() && props.onClose()}>
       <DialogContent class="sm:max-w-md">
@@ -114,7 +218,7 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
             Publish VOD to YouTube
           </DialogTitle>
           <DialogDescription>
-            Upload archived broadcast directly to your YouTube channel.
+            Download from cloud storage and upload to your YouTube channel.
           </DialogDescription>
         </DialogHeader>
 
@@ -221,20 +325,19 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
                 </div>
               </div>
 
-              {/* Upload Progress Bar */}
-              <Show when={uploading() && progress()}>
-                {(p) => (
-                  <div class="space-y-1.5 pt-2 border-t border-border/50">
-                    <div class="flex justify-between text-xs font-mono text-muted-foreground">
-                      <span>{p().percent.toFixed(1)}%</span>
-                      <span>
-                        {formatBytes(p().bytes_uploaded)} / {formatBytes(p().total_bytes)} (
-                        {formatSpeed(p().speed_mbps || 0)})
-                      </span>
-                    </div>
-                    <Progress value={p().percent} />
+              <Show when={uploading()}>
+                <div class="space-y-1.5 pt-2 border-t border-border/50">
+                  <div class="flex justify-between text-xs font-mono text-muted-foreground">
+                    <span>
+                      {phase() === "downloading" ? "Downloading..." : "Uploading..."}{" "}
+                      {activePercent().toFixed(1)}%
+                    </span>
+                    <Show when={activeBytesLabel()}>
+                      <span>{activeBytesLabel()}</span>
+                    </Show>
                   </div>
-                )}
+                  <Progress value={activePercent()} />
+                </div>
               </Show>
 
               <Show when={errorMsg()}>
@@ -253,11 +356,11 @@ export const YouTubePublishModal: Component<YouTubePublishModalProps> = (props) 
               variant="default"
               size="sm"
               onClick={handleUpload}
-              disabled={uploading() || !title()}
+              disabled={uploading() || !title() || !props.source}
               class="gap-1.5 bg-red-600 hover:bg-red-700 text-white"
             >
               <span class="i-mdi-upload size-4" aria-hidden="true" />
-              {uploading() ? "Uploading..." : "Publish to YouTube"}
+              {uploading() ? "Publishing..." : "Publish to YouTube"}
             </Button>
           </Show>
         </DialogFooter>
